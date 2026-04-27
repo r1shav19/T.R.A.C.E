@@ -1,1257 +1,3565 @@
-// T.R.A.C.E. — Complete React App (Single File)
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { EmergencyCommandMap } from "./EmergencyCommandMap";
+import {
+  CLIENT_COPY_BY_LANGUAGE,
+  CLIENT_PROFILE_COPY,
+  CROSS_MATCH_SYSTEMS,
+  LANGUAGE_OPTIONS,
+  SOS_LOG_SEQUENCE,
+  TRACE_CLIENTS,
+  TRAUMA_RESOURCES,
+  createIncident,
+  formatClock,
+  formatElapsed,
+  getActivationGroups,
+  getDemoHelpServices,
+} from "./traceData";
+import {
+  generateConditionBrief,
+  generateTraumaHandoff,
+  sealAuditPayload,
+} from "./traceApi";
 
-/* ═══════════════════════════════════════════
-   STYLES
-═══════════════════════════════════════════ */
 const STYLES = `
-@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
+
 :root {
-  --red:#FF2D2D;--red-glow:rgba(255,45,45,0.25);--orange:#FF6B1A;
-  --yellow:#FFD600;--green:#00FF88;--blue:#3B8BFF;
-  --bg:#07090E;--bg2:#0C0F18;--bg3:#111622;
-  --border:rgba(255,255,255,0.07);--border-red:rgba(255,45,45,0.25);
-  --text:#E8EAF2;--text-dim:#5A6278;--text-mid:#9BA3BC;
+  --red: #ff4d4d;
+  --red-soft: rgba(255, 77, 77, 0.14);
+  --green: #2ee59d;
+  --blue: #59a7ff;
+  --amber: #ffb347;
+  --violet: #a482ff;
+  --cyan: #55d9ff;
+  --bg: #060a10;
+  --bg-alt: #0b111a;
+  --bg-panel: rgba(12, 18, 28, 0.96);
+  --bg-panel-soft: rgba(255, 255, 255, 0.03);
+  --border: rgba(255, 255, 255, 0.08);
+  --text: #edf2fa;
+  --text-mid: #a2b2c9;
+  --text-dim: #66768e;
 }
-*{margin:0;padding:0;box-sizing:border-box;}
-body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min-height:100vh;overflow-x:hidden;}
-.app{display:flex;flex-direction:column;min-height:100vh;}
-.navbar{display:flex;align-items:center;justify-content:space-between;padding:0 24px;height:56px;background:var(--bg2);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;}
-.nav-logo{font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:0.2em;color:white;}
-.nav-logo span{color:var(--red);}
-.nav-tabs{display:flex;gap:4px;}
-.nav-tabs button{background:none;border:none;color:var(--text-dim);font-family:'Space Mono',monospace;font-size:11px;letter-spacing:2px;padding:6px 14px;border-radius:4px;cursor:pointer;transition:all 0.2s;text-transform:uppercase;}
-.nav-tabs button:hover{color:var(--text);background:rgba(255,255,255,0.04);}
-.nav-tabs button.active{color:var(--red);background:rgba(255,45,45,0.08);}
-.nav-right{display:flex;align-items:center;gap:12px;}
-.nav-alert{display:flex;align-items:center;gap:6px;font-family:'Space Mono',monospace;font-size:10px;color:var(--red);letter-spacing:2px;background:rgba(255,45,45,0.08);border:1px solid var(--border-red);padding:4px 12px;border-radius:100px;}
-.language-switcher{position:relative;}
-.language-button{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,0.03);border:1px solid var(--border);color:var(--text);font-family:'Space Mono',monospace;font-size:10px;letter-spacing:1.5px;padding:8px 12px;border-radius:999px;cursor:pointer;transition:all 0.2s;text-transform:uppercase;}
-.language-button:hover{border-color:rgba(255,255,255,0.2);background:rgba(255,255,255,0.05);}
-.language-label{color:var(--text-dim);}
-.language-caret{font-size:9px;color:var(--red);}
-.language-menu{position:absolute;top:calc(100% + 8px);right:0;min-width:210px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:4px;box-shadow:0 18px 48px rgba(0,0,0,0.28);}
-.language-option{background:transparent;border:none;border-radius:8px;color:var(--text-mid);cursor:pointer;display:flex;align-items:center;justify-content:space-between;font-family:'DM Sans',sans-serif;font-size:13px;padding:10px 12px;text-align:left;transition:all 0.2s;}
-.language-option:hover{background:rgba(255,255,255,0.04);color:var(--text);}
-.language-option.active{background:rgba(255,45,45,0.08);color:var(--text);border:1px solid var(--border-red);}
-.language-native{color:var(--text-dim);font-size:12px;}
-.translate-anchor{position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden;}
-.goog-te-banner-frame.skiptranslate{display:none!important;}
-body{top:0!important;}
-.main{flex:1;}
-.pulse-dot{display:inline-block;width:6px;height:6px;background:var(--red);border-radius:50%;animation:pulseDot 1.5s infinite;}
-@keyframes pulseDot{0%,100%{opacity:1;transform:scale(1);}50%{opacity:0.3;transform:scale(0.5);}}
-.section-tag{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:3px;color:var(--red);text-transform:uppercase;margin-bottom:8px;}
-.btn-primary{background:var(--red);color:white;border:none;font-family:'Space Mono',monospace;font-size:12px;letter-spacing:2px;padding:12px 28px;border-radius:2px;cursor:pointer;transition:all 0.2s;text-transform:uppercase;}
-.btn-primary:hover{background:#e02020;box-shadow:0 0 20px rgba(255,45,45,0.4);}
-.btn-primary:disabled{background:var(--text-dim);cursor:not-allowed;box-shadow:none;}
-.btn-ghost{background:transparent;color:var(--text-mid);border:1px solid var(--border);font-family:'Space Mono',monospace;font-size:11px;letter-spacing:1px;padding:10px 20px;border-radius:2px;cursor:pointer;transition:all 0.2s;}
-.btn-ghost:hover{border-color:rgba(255,255,255,0.2);color:var(--text);}
-.badge{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1.5px;padding:3px 10px;border-radius:100px;text-transform:uppercase;}
-.badge.red{background:rgba(255,45,45,0.1);color:var(--red);border:1px solid rgba(255,45,45,0.2);}
-.badge.green{background:rgba(0,255,136,0.1);color:var(--green);border:1px solid rgba(0,255,136,0.2);}
-.badge.yellow{background:rgba(255,214,0,0.1);color:var(--yellow);border:1px solid rgba(255,214,0,0.2);}
-.badge.blue{background:rgba(59,139,255,0.1);color:var(--blue);border:1px solid rgba(59,139,255,0.2);}
-@keyframes fadeUp{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:translateY(0);}}
-@keyframes fadeIn{from{opacity:0;}to{opacity:1;}}
-@keyframes slideIn{from{opacity:0;transform:translateX(-12px);}to{opacity:1;transform:translateX(0);}}
-.fade-up{animation:fadeUp 0.5s ease both;}
-.fade-in{animation:fadeIn 0.4s ease both;}
-.risk-row{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
-.risk-key{font-family:'Space Mono',monospace;font-size:9px;color:var(--text-dim);letter-spacing:1px;width:60px;flex-shrink:0;}
-.risk-track{flex:1;height:3px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden;}
-.risk-fill{height:100%;border-radius:2px;transition:width 1s ease;}
-.risk-val{font-family:'Space Mono',monospace;font-size:9px;color:var(--text-dim);width:28px;text-align:right;}
 
-/* SOS */
-.sos-page{display:grid;grid-template-columns:340px 1fr;min-height:calc(100vh - 56px);}
-.sos-left{border-right:1px solid var(--border);padding:28px 20px;overflow-y:auto;}
-.sos-title{font-family:'Bebas Neue',sans-serif;font-size:38px;letter-spacing:0.04em;line-height:1;margin-bottom:20px;color:white;}
-.profile-list{display:flex;flex-direction:column;gap:10px;}
-.profile-card{background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:14px;cursor:pointer;transition:all 0.2s;}
-.profile-card:hover{border-color:rgba(255,255,255,0.15);}
-.profile-card.selected{border-color:var(--border-red);background:rgba(255,45,45,0.04);}
-.profile-card-header{display:flex;align-items:center;gap:12px;}
-.profile-avatar{width:36px;height:36px;background:var(--bg3);border:1px solid var(--border);border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--red);flex-shrink:0;}
-.profile-avatar.large{width:44px;height:44px;font-size:22px;}
-.profile-name{font-size:14px;font-weight:600;color:var(--text);}
-.profile-condition{font-size:11px;color:var(--text-dim);margin-top:2px;}
-.profile-details{margin-top:14px;padding-top:14px;border-top:1px solid var(--border);}
-.detail-row{display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px;gap:16px;}
-.detail-row span:first-child{color:var(--text-dim);flex-shrink:0;}
-.detail-row span:last-child{color:var(--text);text-align:right;}
-.sos-right{display:flex;align-items:center;justify-content:center;padding:40px;background:radial-gradient(ellipse 50% 50% at 50% 50%,rgba(255,45,45,0.04) 0%,transparent 70%);}
-.sos-trigger-zone{text-align:center;display:flex;flex-direction:column;align-items:center;gap:24px;}
-.sos-instruction{font-size:15px;color:var(--text-dim);max-width:300px;line-height:1.6;}
-.sos-instruction strong{color:var(--text);}
-.sos-btn-wrap{position:relative;width:160px;height:160px;display:flex;align-items:center;justify-content:center;}
-.sos-ring{position:absolute;border-radius:50%;border:1px solid rgba(255,45,45,0.2);animation:ringPulse 3s infinite;}
-.sos-ring-1{width:160px;height:160px;}
-.sos-ring-2{width:200px;height:200px;animation-delay:1s;}
-@keyframes ringPulse{0%,100%{opacity:0.4;transform:scale(1);}50%{opacity:0.1;transform:scale(1.05);}}
-.sos-btn{width:120px;height:120px;border-radius:50%;background:var(--red);border:none;color:white;font-family:'Bebas Neue',sans-serif;font-size:32px;letter-spacing:4px;cursor:pointer;transition:all 0.15s;box-shadow:0 0 40px rgba(255,45,45,0.4),0 0 80px rgba(255,45,45,0.15);position:relative;z-index:1;user-select:none;}
-.sos-btn:active,.sos-btn.arming{transform:scale(0.95);box-shadow:0 0 60px rgba(255,45,45,0.6);}
-.sos-progress-ring{position:absolute;width:160px;height:160px;top:0;left:0;}
-.sos-hint{font-family:'Space Mono',monospace;font-size:10px;color:var(--text-dim);letter-spacing:2px;text-transform:uppercase;}
-.sos-active{width:100%;max-width:520px;display:flex;flex-direction:column;gap:20px;}
-.sos-active-header{display:flex;align-items:center;gap:8px;}
-.sos-active-profile{display:flex;align-items:center;gap:14px;background:var(--bg2);border:1px solid var(--border-red);border-radius:4px;padding:16px;}
-.log-feed{background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:16px;max-height:260px;overflow-y:auto;display:flex;flex-direction:column;gap:2px;}
-.log-entry{display:flex;gap:12px;font-family:'Space Mono',monospace;font-size:11px;padding:4px 0;animation:slideIn 0.3s ease both;}
-.log-time{color:var(--text-dim);flex-shrink:0;}
-.log-normal .log-msg{color:var(--text-mid);}
-.log-critical .log-msg{color:var(--red);}
-.log-success .log-msg{color:var(--green);}
-.log-cursor{font-family:'Space Mono',monospace;font-size:14px;color:var(--red);animation:blink 1s infinite;}
-@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
-.sos-active-actions{display:flex;flex-direction:column;gap:8px;}
+* {
+  box-sizing: border-box;
+}
 
-/* DASHBOARD */
-.dashboard{display:flex;flex-direction:column;height:calc(100vh - 56px);}
-.dash-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:calc(100vh - 56px);padding:40px 20px;text-align:center;gap:16px;}
-.dash-empty-title{font-family:'Bebas Neue',sans-serif;font-size:52px;letter-spacing:0.05em;line-height:1;color:white;}
-.dash-empty p{font-size:14px;color:var(--text-dim);}
-.dash-standby-grid{display:flex;gap:12px;margin-top:24px;flex-wrap:wrap;justify-content:center;}
-.standby-card{background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:16px 20px;text-align:center;min-width:110px;}
-.standby-letter{font-family:'Bebas Neue',sans-serif;font-size:40px;color:var(--red);opacity:0.4;line-height:1;}
-.standby-text{font-family:'Space Mono',monospace;font-size:9px;color:var(--text-dim);letter-spacing:1px;margin-top:4px;}
-.dash-header{display:flex;justify-content:space-between;align-items:flex-start;padding:14px 24px;background:var(--bg2);border-bottom:1px solid var(--border);}
-.dash-id{display:flex;align-items:center;gap:8px;font-family:'Space Mono',monospace;font-size:12px;color:var(--red);letter-spacing:2px;margin-bottom:4px;}
-.dash-victim{font-size:15px;font-weight:600;margin-bottom:2px;}
-.dash-zone{font-size:12px;color:var(--text-dim);}
-.dash-header-right{text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:4px;}
-.dash-timer{font-family:'Bebas Neue',sans-serif;font-size:36px;color:var(--red);letter-spacing:0.1em;line-height:1;}
-.dash-timer-label{font-family:'Space Mono',monospace;font-size:9px;color:var(--text-dim);letter-spacing:3px;}
-.dash-tabs{display:flex;border-bottom:1px solid var(--border);padding:0 24px;}
-.dash-tabs button{background:none;border:none;border-bottom:2px solid transparent;color:var(--text-dim);font-family:'Space Mono',monospace;font-size:11px;letter-spacing:2px;padding:12px 16px;cursor:pointer;transition:all 0.2s;margin-bottom:-1px;}
-.dash-tabs button:hover{color:var(--text);}
-.dash-tabs button.active{color:var(--red);border-bottom-color:var(--red);}
-.dash-content{flex:1;overflow:hidden;}
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+}
 
-/* MAP */
-.map-container{position:relative;width:100%;height:100%;min-height:calc(100vh - 180px);overflow:hidden;background:#070B10;}
-.map-canvas{width:100%;height:100%;display:block;}
-.map-overlay-tl{position:absolute;top:16px;left:16px;background:rgba(7,9,14,0.85);border:1px solid var(--border);border-radius:2px;padding:10px 14px;backdrop-filter:blur(4px);}
-.map-label{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:3px;color:var(--red);text-transform:uppercase;margin-bottom:3px;}
-.map-coords{font-family:'Space Mono',monospace;font-size:11px;color:var(--text-dim);}
-.map-legend{position:absolute;bottom:16px;left:16px;display:flex;flex-direction:column;gap:6px;background:rgba(7,9,14,0.85);border:1px solid var(--border);border-radius:2px;padding:10px 14px;}
-.legend-item{display:flex;align-items:center;gap:8px;font-family:'Space Mono',monospace;font-size:10px;color:var(--text-dim);letter-spacing:1px;}
-.legend-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
-.legend-dot.red{background:var(--red);box-shadow:0 0 6px var(--red);}
-.legend-dot.green{background:var(--green);box-shadow:0 0 6px var(--green);}
-.legend-dot.orange{background:var(--orange);box-shadow:0 0 6px var(--orange);}
-.map-aggressor-alert{position:absolute;top:16px;left:50%;transform:translateX(-50%);background:rgba(255,107,26,0.1);border:1px solid rgba(255,107,26,0.4);border-radius:2px;padding:8px 16px;font-family:'Space Mono',monospace;font-size:10px;color:var(--orange);letter-spacing:1.5px;display:flex;align-items:center;gap:8px;white-space:nowrap;}
-.map-responder-chips{position:absolute;bottom:16px;right:16px;display:flex;flex-direction:column;gap:6px;}
-.resp-chip{display:flex;align-items:center;gap:8px;background:rgba(7,9,14,0.9);border:1px solid var(--border);border-radius:2px;padding:8px 12px;cursor:pointer;transition:border-color 0.2s;backdrop-filter:blur(4px);}
-.resp-chip:hover{border-color:rgba(0,255,136,0.3);}
-.resp-chip-name{font-family:'Space Mono',monospace;font-size:10px;color:var(--text-mid);}
+body {
+  background:
+    radial-gradient(circle at top left, rgba(89, 167, 255, 0.08), transparent 24%),
+    radial-gradient(circle at top right, rgba(255, 77, 77, 0.08), transparent 24%),
+    linear-gradient(180deg, #060a10 0%, #0a1017 100%);
+  color: var(--text);
+  font-family: "DM Sans", sans-serif;
+}
 
-/* RESPONDER */
-.resp-panel{display:grid;grid-template-columns:320px 1fr;height:100%;overflow:hidden;}
-.resp-list{border-right:1px solid var(--border);padding:16px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;}
-.panel-section-title{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:3px;color:var(--text-dim);text-transform:uppercase;padding:4px 0;border-bottom:1px solid var(--border);margin-bottom:8px;}
-.resp-item{display:flex;gap:12px;padding:12px;background:var(--bg2);border:1px solid var(--border);border-radius:4px;cursor:pointer;transition:all 0.2s;}
-.resp-item:hover{border-color:rgba(255,255,255,0.15);}
-.resp-item.selected{border-color:var(--border-red);background:rgba(255,45,45,0.04);}
-.resp-emoji{font-size:22px;flex-shrink:0;line-height:1.4;}
-.resp-info-block{flex:1;min-width:0;}
-.resp-name-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:3px;}
-.resp-name{font-size:13px;font-weight:600;}
-.resp-role-text{font-family:'Space Mono',monospace;font-size:9px;color:var(--red);letter-spacing:1px;margin-bottom:3px;}
-.resp-dist{font-size:11px;color:var(--text-dim);}
-.crowd-alert{background:var(--bg2);border:1px solid rgba(255,214,0,0.2);border-radius:4px;padding:12px;margin-bottom:8px;}
-.crowd-alert.confirmed{border-color:rgba(0,255,136,0.2);}
-.crowd-alert-header{display:flex;align-items:center;gap:8px;margin-bottom:6px;}
-.crowd-time{font-family:'Space Mono',monospace;font-size:9px;color:var(--text-dim);letter-spacing:1px;}
-.crowd-msg{font-size:12px;color:var(--text-mid);line-height:1.5;}
-.resp-detail{padding:24px;overflow-y:auto;}
-.resp-detail-header{display:flex;gap:16px;align-items:flex-start;margin-bottom:20px;padding-bottom:20px;border-bottom:1px solid var(--border);}
-.resp-detail-stats{display:flex;gap:24px;}
-.detail-stat{text-align:center;}
-.detail-stat-val{font-family:'Bebas Neue',sans-serif;font-size:28px;color:var(--text);line-height:1;}
-.detail-stat-key{font-family:'Space Mono',monospace;font-size:9px;color:var(--text-dim);letter-spacing:2px;margin-top:2px;}
-.task-list{display:flex;flex-direction:column;gap:6px;margin-top:8px;}
-.task-item{display:flex;gap:12px;padding:10px 12px;background:var(--bg2);border:1px solid var(--border);border-radius:2px;}
-.task-num{font-family:'Bebas Neue',sans-serif;font-size:20px;color:rgba(255,45,45,0.3);line-height:1.2;flex-shrink:0;}
-.task-text{font-size:13px;color:var(--text-mid);line-height:1.5;}
-.gemini-brief{background:rgba(59,139,255,0.05);border:1px solid rgba(59,139,255,0.15);border-radius:4px;padding:14px;margin-top:8px;}
-.gemini-tag{font-family:'Space Mono',monospace;font-size:9px;color:var(--blue);letter-spacing:2px;margin-bottom:8px;}
-.gemini-brief p{font-size:13px;color:var(--text-dim);line-height:1.7;}
-.gemini-brief strong{color:var(--text);}
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
 
-/* EVIDENCE */
-.evidence-page{display:grid;grid-template-columns:1fr 300px;height:100%;overflow:hidden;}
-.evidence-list{padding:20px;overflow-y:auto;border-right:1px solid var(--border);}
-.evidence-header-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;}
-.ev-timeline{display:flex;flex-direction:column;}
-.ev-item{display:flex;gap:12px;margin-bottom:4px;}
-.ev-line-wrap{display:flex;flex-direction:column;align-items:center;flex-shrink:0;width:16px;}
-.ev-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;margin-top:4px;}
-.ev-dot.green{background:var(--green);box-shadow:0 0 6px rgba(0,255,136,0.4);}
-.ev-dot.blue{background:var(--blue);box-shadow:0 0 6px rgba(59,139,255,0.4);}
-.ev-dot.yellow{background:var(--yellow);box-shadow:0 0 6px rgba(255,214,0,0.4);}
-.ev-connector{width:1px;flex:1;min-height:20px;background:var(--border);margin:4px 0;}
-.ev-content{flex:1;background:var(--bg2);border:1px solid var(--border);border-radius:3px;padding:10px 12px;margin-bottom:8px;}
-.ev-top-row{display:flex;align-items:center;gap:8px;margin-bottom:5px;flex-wrap:wrap;}
-.ev-icon{font-size:14px;}
-.ev-type{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--text-dim);flex:1;}
-.ev-ts{font-family:'Space Mono',monospace;font-size:9px;color:var(--text-dim);}
-.ev-label{font-size:13px;font-weight:500;margin-bottom:3px;}
-.ev-detail{font-size:11px;color:var(--text-dim);}
-.ev-pending{display:flex;align-items:center;gap:8px;padding:8px 0;font-family:'Space Mono',monospace;font-size:10px;color:var(--text-dim);letter-spacing:1px;}
-.ev-pending-dot{width:8px;height:8px;border-radius:50%;background:var(--text-dim);animation:pulseDot 1.5s infinite;}
-.evidence-right{padding:20px;overflow-y:auto;}
-.vault-stats{display:flex;gap:12px;margin:12px 0;}
-.vault-stat-card{flex:1;background:var(--bg2);border:1px solid var(--border);border-radius:3px;padding:12px;text-align:center;}
-.vault-stat-val{font-family:'Bebas Neue',sans-serif;font-size:32px;line-height:1;margin-bottom:4px;}
-.vault-stat-key{font-family:'Space Mono',monospace;font-size:8px;color:var(--text-dim);letter-spacing:2px;}
-.profile-lock-card{background:var(--bg2);border:1px solid var(--border);border-radius:3px;padding:12px;margin:12px 0;}
-.lock-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px;gap:12px;}
-.lock-row:last-child{border-bottom:none;}
-.lock-key{font-family:'Space Mono',monospace;font-size:9px;color:var(--text-dim);letter-spacing:1px;flex-shrink:0;}
-.lock-val{color:var(--text);text-align:right;}
-.report-card{background:var(--bg2);border:1px solid var(--border);border-radius:3px;padding:16px;margin-top:12px;}
-.compile-bar{height:3px;background:var(--border);border-radius:2px;overflow:hidden;margin-top:12px;}
-.compile-fill{height:100%;background:var(--yellow);border-radius:2px;transition:width 1s linear;}
+.trace-root,
+.trace-app {
+  min-height: 100vh;
+}
 
-/* CROSSMATCH */
-.crossmatch-page{display:grid;grid-template-columns:1fr 1fr;height:100%;overflow:hidden;}
-.crossmatch-left{padding:20px;overflow-y:auto;border-right:1px solid var(--border);}
-.db-list{display:flex;flex-direction:column;gap:10px;margin-bottom:24px;}
-.db-card{background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:14px;transition:border-color 0.3s;}
-.db-card.scanning{border-color:rgba(255,214,0,0.3);}
-.db-card.done{border-color:rgba(0,255,136,0.2);}
-.db-card-header{display:flex;align-items:flex-start;gap:10px;}
-.db-icon{font-size:18px;flex-shrink:0;margin-top:1px;}
-.db-info{flex:1;}
-.db-label{font-size:13px;font-weight:500;margin-bottom:3px;}
-.db-systems{font-family:'Space Mono',monospace;font-size:9px;color:var(--text-dim);letter-spacing:0.5px;line-height:1.5;}
-.db-status{flex-shrink:0;}
-.db-progress-bar{height:2px;background:var(--border);border-radius:1px;margin-top:10px;overflow:hidden;}
-.db-progress-fill{height:100%;border-radius:1px;}
-.db-scanning-text{font-family:'Space Mono',monospace;font-size:9px;color:var(--yellow);letter-spacing:1px;margin-top:6px;animation:blink 1s infinite;}
-.crossmatch-summary{background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:16px;}
-.summary-stats{display:flex;gap:20px;}
-.summary-stat{text-align:center;flex:1;}
-.summary-val{font-family:'Bebas Neue',sans-serif;font-size:36px;line-height:1;}
-.summary-key{font-family:'Space Mono',monospace;font-size:8px;color:var(--text-dim);letter-spacing:2px;margin-top:2px;}
-.crossmatch-right{padding:20px;overflow-y:auto;}
-.gemini-trigger{background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:24px;text-align:center;}
-.gemini-loading{display:flex;flex-direction:column;align-items:center;padding:40px 20px;}
-.gemini-spinner{width:32px;height:32px;border:2px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:spin 1s linear infinite;}
-@keyframes spin{to{transform:rotate(360deg);}}
-.gemini-error-note{background:rgba(255,107,26,0.08);border:1px solid rgba(255,107,26,0.2);border-radius:4px;padding:10px 14px;font-size:11px;color:var(--orange);margin-bottom:12px;font-family:'Space Mono',monospace;letter-spacing:0.5px;line-height:1.5;}
-.gemini-result{display:flex;flex-direction:column;gap:12px;}
-.gemini-risk-banner{border:1px solid;border-radius:4px;padding:12px 16px;display:flex;align-items:center;}
-.gemini-section{background:var(--bg2);border:1px solid var(--border);border-radius:3px;padding:12px;}
-.gemini-section-title{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--text-dim);margin-bottom:8px;}
-.gemini-text{font-size:12px;color:var(--text-mid);line-height:1.6;}
-.priority-zone{display:flex;gap:8px;margin-bottom:4px;}
-.priority-num{font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--red);opacity:0.5;line-height:1.2;flex-shrink:0;}
-.do-item{font-size:11px;color:var(--green);margin-bottom:4px;line-height:1.5;}
-.dont-item{font-size:11px;color:var(--red);margin-bottom:4px;line-height:1.5;}
+.trace-app {
+  display: flex;
+  flex-direction: column;
+}
 
-/* PROFILE PAGE */
-.profile-page{display:grid;grid-template-columns:260px 1fr;min-height:calc(100vh - 56px);}
-.profile-sidebar{border-right:1px solid var(--border);padding:20px 16px;display:flex;flex-direction:column;gap:8px;}
-.profile-list-item{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--bg2);border:1px solid var(--border);border-radius:4px;cursor:pointer;transition:all 0.2s;}
-.profile-list-item:hover{border-color:rgba(255,255,255,0.15);}
-.profile-list-item.selected{border-color:var(--border-red);background:rgba(255,45,45,0.04);}
-.profile-list-avatar{width:32px;height:32px;background:var(--bg3);border:1px solid var(--border);border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:16px;color:var(--red);flex-shrink:0;}
-.profile-list-name{font-size:13px;font-weight:500;}
-.profile-list-cond{font-size:11px;color:var(--text-dim);margin-top:1px;}
-.profile-detail{padding:28px;overflow-y:auto;}
-.pd-header{display:flex;align-items:center;gap:16px;margin-bottom:24px;padding-bottom:24px;border-bottom:1px solid var(--border);}
-.pd-avatar{width:52px;height:52px;background:var(--bg2);border:1px solid var(--border-red);border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:26px;color:var(--red);flex-shrink:0;}
-.pd-name{font-size:18px;font-weight:600;}
-.pd-cond{font-size:12px;color:var(--text-dim);margin:2px 0;}
-.pd-id{font-family:'Space Mono',monospace;font-size:10px;color:var(--red);letter-spacing:2px;}
-.pd-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
-.pd-section{background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:16px;}
-.pd-row{display:flex;flex-direction:column;gap:2px;margin-bottom:10px;}
-.pd-key{font-family:'Space Mono',monospace;font-size:9px;color:var(--text-dim);letter-spacing:1.5px;}
-.pd-val{font-size:13px;color:var(--text);line-height:1.5;}
-.bias-card{background:rgba(0,255,136,0.03);border:1px solid rgba(0,255,136,0.12);border-radius:4px;padding:14px;margin-top:8px;}
-.pd-edit{max-width:500px;}
-.edit-field{margin-bottom:14px;}
-.edit-label{display:block;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--text-dim);margin-bottom:6px;}
-.edit-input{width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:3px;padding:10px 12px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;outline:none;transition:border-color 0.2s;}
-.edit-input:focus{border-color:rgba(255,45,45,0.4);}
-.edit-actions{display:flex;gap:10px;margin-top:20px;}
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  height: 68px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 24px;
+  background: rgba(7, 11, 17, 0.92);
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(16px);
+}
 
-/* INNOVATION PAGE */
-.innovation-page{padding:32px 24px 40px;display:flex;flex-direction:column;gap:24px;min-height:calc(100vh - 56px);background:
-radial-gradient(circle at top right,rgba(59,139,255,0.12),transparent 28%),
-radial-gradient(circle at top left,rgba(255,45,45,0.12),transparent 24%),
-linear-gradient(180deg,#07090E 0%,#0C0F18 100%);}
-.innovation-hero{display:grid;grid-template-columns:1.25fr 0.9fr;gap:20px;align-items:stretch;}
-.innovation-hero-card,.innovation-stack-intro{background:rgba(12,15,24,0.82);border:1px solid var(--border);border-radius:18px;padding:24px;backdrop-filter:blur(8px);}
-.innovation-hero h1{font-family:'Bebas Neue',sans-serif;font-size:68px;letter-spacing:0.08em;line-height:0.95;color:white;margin-bottom:14px;}
-.innovation-lead{font-size:16px;color:var(--text-mid);line-height:1.7;max-width:760px;}
-.innovation-pills{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px;}
-.innovation-pill{padding:8px 12px;border-radius:999px;border:1px solid rgba(59,139,255,0.25);background:rgba(59,139,255,0.08);font-family:'Space Mono',monospace;font-size:10px;letter-spacing:1.4px;color:var(--blue);text-transform:uppercase;}
-.innovation-stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:18px;}
-.innovation-stat{background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:14px;}
-.innovation-stat-value{font-family:'Bebas Neue',sans-serif;font-size:34px;color:white;line-height:1;}
-.innovation-stat-label{font-family:'Space Mono',monospace;font-size:9px;color:var(--text-dim);letter-spacing:2px;margin-top:6px;text-transform:uppercase;}
-.innovation-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;}
-.innovation-card{background:rgba(12,15,24,0.88);border:1px solid var(--border);border-radius:16px;padding:20px;display:flex;flex-direction:column;gap:12px;min-height:220px;}
-.innovation-card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;}
-.innovation-card-index{font-family:'Bebas Neue',sans-serif;font-size:34px;color:rgba(255,45,45,0.5);line-height:1;}
-.innovation-card-title{font-size:18px;font-weight:600;color:white;line-height:1.3;}
-.innovation-card-body{font-size:13px;color:var(--text-mid);line-height:1.7;}
-.innovation-card-detail{font-size:12px;color:var(--text-dim);line-height:1.6;padding-top:12px;border-top:1px solid var(--border);}
-.stack-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;}
-.stack-card{background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:10px;}
-.stack-title{font-size:15px;font-weight:600;color:white;line-height:1.4;}
-.stack-tool{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:1.2px;color:var(--blue);text-transform:uppercase;}
-.stack-copy{font-size:12px;color:var(--text-dim);line-height:1.6;}
+.brand {
+  font-family: "Bebas Neue", sans-serif;
+  font-size: 30px;
+  letter-spacing: 0.2em;
+  color: white;
+  line-height: 1;
+}
 
-@media(max-width:768px){
-  .navbar{height:auto;padding:12px 16px;flex-wrap:wrap;gap:12px;}
-  .nav-tabs{order:3;width:100%;overflow-x:auto;padding-bottom:4px;}
-  .nav-right{margin-left:auto;}
-  .language-menu{right:auto;left:0;}
-  .sos-page,.resp-panel,.evidence-page,.crossmatch-page,.profile-page{grid-template-columns:1fr;}
-  .sos-left,.resp-list,.crossmatch-left,.profile-sidebar{border-right:none;border-bottom:1px solid var(--border);}
-  .pd-grid{grid-template-columns:1fr;}
-  .innovation-hero,.innovation-grid,.stack-grid,.innovation-stat-grid{grid-template-columns:1fr;}
-  .innovation-page{padding:24px 16px 32px;}
-  .innovation-hero h1{font-size:48px;}
+.brand span {
+  color: var(--red);
+}
+
+.topbar-left,
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.topbar-right {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.role-pill,
+.status-pill,
+.mini-status,
+.section-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  font-family: "Space Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+
+.role-pill {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--border);
+  color: var(--text-mid);
+}
+
+.status-pill {
+  color: var(--red);
+  background: rgba(255, 77, 77, 0.1);
+  border-color: rgba(255, 77, 77, 0.22);
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 14px currentColor;
+  animation: pulseDot 1.5s ease-in-out infinite;
+}
+
+.topbar-button,
+.ghost-button,
+.primary-button,
+.danger-button {
+  border: 0;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.topbar-button,
+.ghost-button {
+  padding: 10px 14px;
+  color: var(--text-mid);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+}
+
+.topbar-button:hover,
+.ghost-button:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.16);
+  color: white;
+}
+
+.primary-button,
+.danger-button {
+  padding: 12px 16px;
+  background: linear-gradient(180deg, #ff4d4d 0%, #c51f1f 100%);
+  color: white;
+  font-family: "Space Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  box-shadow: 0 0 24px rgba(255, 77, 77, 0.22);
+}
+
+.primary-button:hover,
+.danger-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 0 30px rgba(255, 77, 77, 0.3);
+}
+
+.primary-button:disabled,
+.danger-button:disabled,
+.ghost-button:disabled,
+.topbar-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+  box-shadow: none;
+  transform: none;
+}
+
+.danger-button {
+  background: linear-gradient(180deg, #ff7b3d 0%, #d14b18 100%);
+}
+
+.trace-main {
+  flex: 1;
+  min-height: 0;
+}
+
+.section-tag {
+  font-family: "Space Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 2.8px;
+  text-transform: uppercase;
+  color: var(--red);
+  margin-bottom: 8px;
+}
+
+.panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  padding: 18px;
+}
+
+.panel h2,
+.panel h3,
+.panel h4,
+.panel p {
+  margin-top: 0;
+}
+
+.panel-title {
+  margin: 0 0 8px;
+  font-size: 20px;
+  color: white;
+}
+
+.panel-copy {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-mid);
+}
+
+.copy-muted {
+  color: var(--text-dim);
+}
+
+.role-gate {
+  min-height: 100vh;
+  padding: 40px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.role-gate-shell {
+  width: min(1120px, 100%);
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  gap: 24px;
+}
+
+.role-gate-hero {
+  padding: 36px;
+  border: 1px solid var(--border);
+  background:
+    radial-gradient(circle at top left, rgba(89, 167, 255, 0.1), transparent 30%),
+    linear-gradient(180deg, rgba(11, 17, 26, 0.98) 0%, rgba(7, 11, 17, 0.98) 100%);
+}
+
+.hero-title {
+  margin: 0 0 14px;
+  font-family: "Bebas Neue", sans-serif;
+  font-size: 72px;
+  line-height: 0.92;
+  letter-spacing: 0.08em;
+  color: white;
+}
+
+.hero-copy {
+  margin: 0 0 20px;
+  max-width: 540px;
+  font-size: 15px;
+  line-height: 1.8;
+  color: var(--text-mid);
+}
+
+.hero-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.hero-feature {
+  padding: 14px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.hero-feature strong {
+  display: block;
+  margin-bottom: 5px;
+  color: white;
+  font-size: 13px;
+}
+
+.hero-feature span {
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.login-grid {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+}
+
+.login-card {
+  padding: 22px;
+  border: 1px solid var(--border);
+  background: rgba(10, 15, 24, 0.96);
+}
+
+.login-card h3 {
+  margin: 0 0 8px;
+  font-size: 22px;
+  color: white;
+}
+
+.login-card p {
+  margin: 0 0 14px;
+  font-size: 13px;
+  color: var(--text-mid);
+  line-height: 1.7;
+}
+
+.login-highlights {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0 0 18px;
+  padding: 0;
+  list-style: none;
+}
+
+.login-highlights li {
+  padding-left: 12px;
+  border-left: 2px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.client-layout {
+  padding: 24px;
+  display: grid;
+  gap: 20px;
+}
+
+.hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 0.9fr) minmax(0, 0.9fr);
+  gap: 20px;
+}
+
+.profile-select-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.profile-card {
+  width: 100%;
+  text-align: left;
+  padding: 14px;
+  border: 1px solid var(--border);
+  background: var(--bg-panel-soft);
+  color: inherit;
+  cursor: pointer;
+  transition: border-color 0.2s ease, transform 0.2s ease, background 0.2s ease;
+}
+
+.profile-card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.profile-card.selected {
+  border-color: rgba(255, 77, 77, 0.36);
+  background: rgba(255, 77, 77, 0.08);
+}
+
+.profile-card:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.profile-card-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.profile-badge {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 77, 77, 0.08);
+  border: 1px solid rgba(255, 77, 77, 0.22);
+  color: var(--red);
+  font-family: "Bebas Neue", sans-serif;
+  font-size: 24px;
+  letter-spacing: 0.08em;
+  flex-shrink: 0;
+}
+
+.profile-name {
+  margin-bottom: 2px;
+  font-size: 15px;
+  font-weight: 600;
+  color: white;
+}
+
+.profile-address {
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.6;
+}
+
+.hero-center {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  min-height: 100%;
+  background:
+    radial-gradient(circle at center, rgba(255, 77, 77, 0.14), transparent 48%),
+    linear-gradient(180deg, rgba(12, 18, 28, 0.98) 0%, rgba(8, 12, 19, 0.98) 100%);
+}
+
+.hero-center h2 {
+  margin: 0;
+  font-family: "Bebas Neue", sans-serif;
+  font-size: 52px;
+  letter-spacing: 0.08em;
+  line-height: 0.94;
+}
+
+.hero-center p {
+  margin: 0;
+  max-width: 360px;
+  color: var(--text-mid);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.sos-button {
+  width: 190px;
+  height: 190px;
+  border-radius: 50%;
+  border: 0;
+  background: linear-gradient(180deg, #ff4d4d 0%, #c51f1f 100%);
+  color: white;
+  font-family: "Bebas Neue", sans-serif;
+  font-size: 46px;
+  letter-spacing: 0.16em;
+  cursor: pointer;
+  box-shadow:
+    0 0 46px rgba(255, 77, 77, 0.36),
+    0 0 92px rgba(255, 77, 77, 0.14);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.sos-button:hover {
+  transform: scale(1.02);
+  box-shadow:
+    0 0 56px rgba(255, 77, 77, 0.44),
+    0 0 110px rgba(255, 77, 77, 0.18);
+}
+
+.sos-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.72;
+  box-shadow: none;
+  transform: none;
+}
+
+.status-banner {
+  width: 100%;
+  padding: 14px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  text-align: left;
+}
+
+.banner-title {
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: white;
+}
+
+.banner-copy {
+  margin: 0;
+  color: var(--text-mid);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.inline-control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.language-switch {
+  display: inline-flex;
+  padding: 4px;
+  gap: 4px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.language-button {
+  min-width: 72px;
+  padding: 10px 12px;
+  border: 0;
+  cursor: pointer;
+  color: var(--text-mid);
+  background: transparent;
+  font-family: "Space Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease;
+}
+
+.language-button:hover {
+  color: white;
+  transform: translateY(-1px);
+}
+
+.language-button.active {
+  color: white;
+  background: rgba(255, 77, 77, 0.16);
+}
+
+.translation-note {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.risk-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.risk-row {
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr) 46px;
+  gap: 10px;
+  align-items: center;
+}
+
+.risk-row span {
+  font-family: "Space Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+}
+
+.risk-bar {
+  height: 5px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.risk-fill {
+  height: 100%;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 20px;
+}
+
+.panel-full {
+  grid-column: 1 / -1;
+}
+
+.checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.checklist li {
+  padding-left: 14px;
+  border-left: 2px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-mid);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.ai-summary {
+  margin: 0 0 14px;
+  color: var(--text-mid);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.ai-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.ai-list-item {
+  padding: 12px;
+  border: 1px solid var(--border);
+  background: rgba(89, 167, 255, 0.04);
+  color: var(--text-mid);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.panel-action-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.panel-action-row .panel-title {
+  margin-bottom: 0;
+}
+
+.client-location-card {
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.client-location-card h4 {
+  margin: 0 0 8px;
+  font-size: 16px;
+  color: white;
+}
+
+.client-location-card p {
+  margin: 0;
+  color: var(--text-mid);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.gemini-loader-card {
+  margin-top: 12px;
+  padding: 16px;
+  border: 1px solid rgba(89, 167, 255, 0.18);
+  background:
+    radial-gradient(circle at top left, rgba(89, 167, 255, 0.12), transparent 34%),
+    rgba(255, 255, 255, 0.02);
+  overflow: hidden;
+}
+
+.gemini-loader-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.gemini-loader-orbit {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 2px solid rgba(89, 167, 255, 0.16);
+  border-top-color: var(--blue);
+  animation: spinGemini 1s linear infinite;
+  flex-shrink: 0;
+}
+
+.gemini-loader-copy strong {
+  display: block;
+  margin-bottom: 4px;
+  color: white;
+  font-size: 13px;
+}
+
+.gemini-loader-copy span {
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.gemini-loader-bars {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.gemini-loader-bar {
+  position: relative;
+  height: 10px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.gemini-loader-bar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(89, 167, 255, 0.3), transparent);
+  transform: translateX(-100%);
+  animation: shimmerGemini 1.2s ease-in-out infinite;
+}
+
+.gemini-loader-bar:nth-child(2)::after {
+  animation-delay: 0.15s;
+}
+
+.gemini-loader-bar:nth-child(3)::after {
+  animation-delay: 0.3s;
+}
+
+.log-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.log-row {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: 10px;
+  font-family: "Space Mono", monospace;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.log-time {
+  color: var(--text-dim);
+}
+
+.log-row.critical .log-copy {
+  color: #ffadad;
+}
+
+.log-row.success .log-copy {
+  color: #8ef2c2;
+}
+
+.log-row.normal .log-copy {
+  color: var(--text-mid);
+}
+
+.admin-layout {
+  min-height: calc(100vh - 68px);
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+}
+
+.admin-menu {
+  padding: 20px 16px;
+  border-right: 1px solid var(--border);
+  background:
+    linear-gradient(180deg, rgba(11, 16, 25, 0.98) 0%, rgba(8, 12, 19, 0.98) 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.admin-menu h2 {
+  margin: 0 0 8px;
+  font-family: "Bebas Neue", sans-serif;
+  font-size: 40px;
+  line-height: 0.94;
+  letter-spacing: 0.06em;
+}
+
+.admin-tab {
+  width: 100%;
+  text-align: left;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--text-mid);
+  cursor: pointer;
+}
+
+.admin-tab.active {
+  border-color: rgba(255, 77, 77, 0.34);
+  background: rgba(255, 77, 77, 0.08);
+  color: white;
+}
+
+.admin-tab-label {
+  display: block;
+  margin-bottom: 4px;
+  font-family: "Space Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+}
+
+.admin-tab-copy {
+  font-size: 12px;
+  line-height: 1.5;
+  color: inherit;
+}
+
+.admin-main {
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+
+.admin-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  align-items: flex-start;
+  padding: 18px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.admin-header h3 {
+  margin: 6px 0 8px;
+  font-size: 22px;
+}
+
+.admin-header p {
+  margin: 0;
+  max-width: 720px;
+  color: var(--text-mid);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.admin-header-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.timer-value {
+  font-family: "Bebas Neue", sans-serif;
+  font-size: 54px;
+  letter-spacing: 0.08em;
+  color: var(--red);
+  line-height: 0.9;
+}
+
+.timer-label {
+  font-family: "Space Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+
+.stats-grid,
+.command-grid,
+.dispatch-grid,
+.handoff-grid {
+  display: grid;
+  gap: 18px;
+}
+
+.stats-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.stat-card {
+  padding: 16px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.stat-card strong {
+  display: block;
+  margin-bottom: 6px;
+  font-family: "Bebas Neue", sans-serif;
+  font-size: 34px;
+  line-height: 1;
+  color: white;
+}
+
+.stat-card span {
+  font-family: "Space Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+
+.command-grid {
+  grid-template-columns: minmax(0, 1.5fr) minmax(320px, 0.9fr);
+}
+
+.dispatch-grid {
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+}
+
+.group-list,
+.service-grid,
+.crossmatch-list,
+.audit-list,
+.form-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.group-card,
+.service-card,
+.cross-card,
+.audit-row-card,
+.form-card,
+.selected-service-card {
+  padding: 16px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.group-card h4,
+.service-card h4,
+.cross-card h4,
+.form-card h4,
+.selected-service-card h4 {
+  margin: 0 0 8px;
+  font-size: 16px;
+  color: white;
+}
+
+.service-top,
+.cross-top,
+.audit-top,
+.form-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.service-meta,
+.cross-meta,
+.audit-meta,
+.form-meta {
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.service-actions {
+  margin-top: 14px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.mini-status {
+  padding: 5px 9px;
+}
+
+.tone-green {
+  color: var(--green);
+  background: rgba(46, 229, 157, 0.1);
+  border-color: rgba(46, 229, 157, 0.24);
+}
+
+.tone-blue {
+  color: var(--blue);
+  background: rgba(89, 167, 255, 0.1);
+  border-color: rgba(89, 167, 255, 0.24);
+}
+
+.tone-amber {
+  color: var(--amber);
+  background: rgba(255, 179, 71, 0.1);
+  border-color: rgba(255, 179, 71, 0.24);
+}
+
+.tone-violet {
+  color: var(--violet);
+  background: rgba(164, 130, 255, 0.12);
+  border-color: rgba(164, 130, 255, 0.24);
+}
+
+.tone-cyan {
+  color: var(--cyan);
+  background: rgba(85, 217, 255, 0.1);
+  border-color: rgba(85, 217, 255, 0.24);
+}
+
+.tone-red {
+  color: var(--red);
+  background: rgba(255, 77, 77, 0.1);
+  border-color: rgba(255, 77, 77, 0.22);
+}
+
+.tone-dim {
+  color: var(--text-mid);
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--border);
+}
+
+.briefing-card {
+  white-space: pre-wrap;
+  color: var(--text-mid);
+  font-size: 13px;
+  line-height: 1.75;
+}
+
+.cross-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  gap: 18px;
+}
+
+.cross-card p,
+.form-card p,
+.group-card p,
+.service-card p,
+.selected-service-card p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--text-mid);
+}
+
+.audit-row-card {
+  display: grid;
+  gap: 8px;
+}
+
+.audit-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-family: "Space Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 1px;
+}
+
+.audit-copy {
+  margin: 0;
+  color: white;
+  font-size: 13px;
+}
+
+.seal-snippet {
+  font-family: "Space Mono", monospace;
+  font-size: 10px;
+  color: var(--text-dim);
+  word-break: break-all;
+}
+
+.waiting-card {
+  padding: 26px;
+  border: 1px dashed rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.waiting-card h4 {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+
+.waiting-card p {
+  margin: 0;
+  color: var(--text-mid);
+  line-height: 1.7;
+}
+
+.trace-map-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) 320px;
+  min-height: 520px;
+  border: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(8, 12, 19, 0.98) 0%, rgba(12, 16, 24, 0.98) 100%);
+}
+
+.trace-map-stage {
+  position: relative;
+  min-height: 520px;
+  border-right: 1px solid var(--border);
+}
+
+.trace-map-google-state {
+  display: flex;
+}
+
+.trace-map-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.trace-map-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(6, 10, 16, 0.38);
+  backdrop-filter: blur(4px);
+  z-index: 3;
+}
+
+.trace-map-loading-card {
+  padding: 16px;
+  border: 1px solid var(--border);
+  background: rgba(7, 11, 17, 0.9);
+  max-width: 280px;
+}
+
+.trace-map-loading-card p {
+  margin: 0;
+  color: var(--text-mid);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.trace-map-card {
+  position: absolute;
+  z-index: 2;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  background: rgba(7, 11, 17, 0.84);
+  backdrop-filter: blur(10px);
+}
+
+.trace-map-card-left {
+  top: 16px;
+  left: 16px;
+  min-width: 230px;
+}
+
+.trace-map-card-right {
+  top: 16px;
+  right: 16px;
+}
+
+.trace-map-title {
+  font-family: "Bebas Neue", sans-serif;
+  font-size: 28px;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  color: white;
+}
+
+.trace-map-meta {
+  margin-top: 6px;
+  font-family: "Space Mono", monospace;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.trace-map-legend {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  background: rgba(7, 11, 17, 0.84);
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: "Space Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+}
+
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.legend-dot.red {
+  background: var(--red);
+  box-shadow: 0 0 10px rgba(255, 77, 77, 0.85);
+}
+
+.legend-dot.green {
+  background: var(--green);
+  box-shadow: 0 0 10px rgba(46, 229, 157, 0.8);
+}
+
+.legend-dot.blue {
+  background: var(--blue);
+  box-shadow: 0 0 10px rgba(89, 167, 255, 0.8);
+}
+
+.legend-dot.orange {
+  background: var(--amber);
+  box-shadow: 0 0 10px rgba(255, 179, 71, 0.85);
+}
+
+.trace-map-rail {
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.trace-map-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.trace-map-service {
+  text-align: left;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
+  color: inherit;
+  cursor: pointer;
+}
+
+.trace-map-service.selected {
+  border-color: rgba(255, 77, 77, 0.34);
+  background: rgba(255, 77, 77, 0.08);
+}
+
+.trace-map-service-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.trace-map-bullet {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.trace-map-bullet.red {
+  background: var(--red);
+}
+
+.trace-map-bullet.green {
+  background: var(--green);
+}
+
+.trace-map-bullet.blue {
+  background: var(--blue);
+}
+
+.trace-map-bullet.amber {
+  background: var(--amber);
+}
+
+.trace-map-bullet.violet {
+  background: var(--violet);
+}
+
+.trace-map-bullet.cyan {
+  background: var(--cyan);
+}
+
+.trace-map-service-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: white;
+}
+
+.trace-map-service-meta {
+  font-family: "Space Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+
+.trace-map-service-copy {
+  color: var(--text-mid);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.trace-map-service-status {
+  margin-top: 8px;
+  font-family: "Space Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 1.3px;
+  text-transform: uppercase;
+  color: white;
+}
+
+.trace-map-empty {
+  min-height: 420px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 28px;
+  border: 1px dashed rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.trace-map-empty h3 {
+  margin: 0 0 8px;
+  font-family: "Bebas Neue", sans-serif;
+  font-size: 34px;
+  letter-spacing: 0.08em;
+}
+
+.trace-map-empty p {
+  margin: 0;
+  color: var(--text-mid);
+  line-height: 1.8;
+}
+
+@keyframes pulseDot {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scale(0.72);
+  }
+}
+
+@keyframes spinGemini {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes shimmerGemini {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@media (max-width: 1180px) {
+  .hero-grid,
+  .dispatch-grid,
+  .command-grid,
+  .cross-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .trace-map-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .trace-map-stage {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+    min-height: 420px;
+  }
+}
+
+@media (max-width: 960px) {
+  .role-gate-shell,
+  .admin-layout,
+  .stats-grid,
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-menu {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .hero-list {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .topbar {
+    height: auto;
+    padding: 16px;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .topbar-left,
+  .topbar-right {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .client-layout,
+  .admin-main,
+  .role-gate {
+    padding: 16px;
+  }
+
+  .hero-title {
+    font-size: 54px;
+  }
+
+  .hero-center h2 {
+    font-size: 42px;
+  }
+
+  .sos-button {
+    width: 156px;
+    height: 156px;
+    font-size: 38px;
+  }
+
+  .admin-header {
+    flex-direction: column;
+  }
+
+  .admin-header-right {
+    align-items: flex-start;
+  }
+
+  .trace-map-card-right {
+    top: auto;
+    right: auto;
+    left: 16px;
+    bottom: 88px;
+  }
+
+  .trace-map-legend {
+    display: none;
+  }
+
+  .panel-action-row {
+    flex-direction: column;
+  }
 }
 `;
 
-/* ═══════════════════════════════════════════
-   DATA
-═══════════════════════════════════════════ */
-const VICTIM_PROFILES = [
-  { id: "P001", name: "Eleanor M.", age: 72, condition: "Dementia — Stage 2", language: "Tagalog / English", behavior: "Seeks enclosed spaces, avoids crowds", medicalRisk: 85, mobilityRisk: 40, threatRisk: 20, contact: "Maria (daughter) +63 912 345 6789" },
-  { id: "P002", name: "James K.", age: 8, condition: "Autism Spectrum — Non-verbal", language: "English", behavior: "Drawn to water, may not respond to name", medicalRisk: 60, mobilityRisk: 75, threatRisk: 35, contact: "Kevin (father) +63 917 234 5678" },
-  { id: "P003", name: "Priya S.", age: 34, condition: "Domestic Violence — Active Threat", language: "Hindi / English", behavior: "Will hide, avoid eye contact with strangers", medicalRisk: 90, mobilityRisk: 80, threatRisk: 95, contact: "Safe house +63 918 888 0000" },
-];
+const CLIENT_LOCATION_OPTIONS = {
+  enableHighAccuracy: true,
+  timeout: 12000,
+  maximumAge: 30000,
+};
 
-const LANGUAGE_OPTIONS = [
-  { code: "en", label: "English", nativeLabel: "English" },
-  { code: "hi", label: "Hindi", nativeLabel: "Hindi" },
-  { code: "bn", label: "Bengali", nativeLabel: "Bangla" },
-  { code: "ta", label: "Tamil", nativeLabel: "Tamil" },
-  { code: "te", label: "Telugu", nativeLabel: "Telugu" },
-  { code: "es", label: "Spanish", nativeLabel: "Espanol" },
-  { code: "fr", label: "French", nativeLabel: "Francais" },
-  { code: "ar", label: "Arabic", nativeLabel: "Arabic" },
-  { code: "pt", label: "Portuguese", nativeLabel: "Portugues" },
-  { code: "tl", label: "Tagalog", nativeLabel: "Tagalog" },
-];
-
-const INNOVATION_LAYERS = [
-  {
-    title: "Gemini-Powered Victim Profiling at Trigger",
-    summary: "The moment SOS fires, TRACE generates a dynamic field profile so responders arrive with behavioral context, not just a face and location.",
-    detail: "Profiles can model medical vulnerability, likely movement pattern, primary language, and whether the incident matches a repeat wandering history or a first-time disappearance.",
-  },
-  {
-    title: "Crowd-Sourced Vision Network",
-    summary: "Nearby opted-in users receive a discreet behavioral alert and last-known zone instead of a victim photo, turning the community into privacy-safe passive scanners.",
-    detail: "It acts like a hyper-local, real-time alert layer for active searches while keeping sensitive identity data protected.",
-  },
-  {
-    title: "Threat Vector Detection",
-    summary: "TRACE models the threat, not just the victim, and escalates when movement patterns suggest trafficking corridors, highway transfer, or border-proximity risk.",
-    detail: "When the pattern crosses a threshold, the platform can recommend an interception path for law enforcement before the window closes.",
-  },
-  {
-    title: "Silent Hospital Cross-Match",
-    summary: "Every 90 seconds, TRACE can silently check nearby hospital admissions, shelter check-ins, and transit lost-and-found systems against the live case.",
-    detail: "That replaces the hours-later manual phone tree responders usually rely on today.",
-  },
-  {
-    title: "Post-Crisis Trauma Handoff",
-    summary: "Finding the person does not end the workflow. TRACE can auto-generate a structured incident report and route mental-health follow-up for both victim and family.",
-    detail: "The recovery handoff becomes immediate, documented, and consistent across responders.",
-  },
-  {
-    title: "Attacker Proximity Alert",
-    summary: "In domestic-violence cases, TRACE can compare the aggressor's last-known location against the active search zone and silently reroute responders.",
-    detail: "Victim contacts are protected, and the aggressor is never tipped off that the search posture changed.",
-  },
-];
-
-const GOOGLE_STACK = [
-  {
-    capability: "Behavioral risk profiling",
-    tool: "Gemini Pro",
-    description: "Builds responder-ready subject briefings directly from the victim profile at trigger time.",
-  },
-  {
-    capability: "Threat vector and route prediction",
-    tool: "Vertex AI + Maps Routes API",
-    description: "Scores trafficking or evasion patterns and predicts the most probable interception path.",
-  },
-  {
-    capability: "Hospital and shelter silent cross-match",
-    tool: "BigQuery + Pub/Sub",
-    description: "Continuously checks distributed intake signals without waiting on manual outreach.",
-  },
-  {
-    capability: "Crowd-sourced scanner network",
-    tool: "Firebase + Maps Nearby Search",
-    description: "Pushes hyper-local behavioral alerts to opted-in devices around the active search zone.",
-  },
-  {
-    capability: "Aggressor proximity modeling",
-    tool: "Maps Distance Matrix API",
-    description: "Measures whether an attacker is drifting into the victim's route or responder perimeter.",
-  },
-  {
-    capability: "Trauma handoff automation",
-    tool: "Gemini + Google Forms API",
-    description: "Creates incident summaries and downstream support handoff workflows as soon as the case closes.",
-  },
-];
-
-const TRACE_LANGUAGE_STORAGE_KEY = "trace-language";
-
-const LOG_SEQUENCE = [
-  { delay: 0, msg: "Safe zone breach detected", type: "critical" },
-  { delay: 700, msg: "Device signal acquiring...", type: "normal" },
-  { delay: 1400, msg: "Last GPS coordinates locked", type: "normal" },
-  { delay: 2100, msg: "Gemini AI profile generating...", type: "normal" },
-  { delay: 3000, msg: "Bias correction check — PASSED ✓", type: "success" },
-  { delay: 3800, msg: "Risk assessment complete", type: "normal" },
-  { delay: 4600, msg: "Dispatching 3 nearest responders...", type: "critical" },
-  { delay: 5400, msg: "Hospital DB cross-match initiated", type: "normal" },
-  { delay: 6200, msg: "Evidence vault — recording active", type: "success" },
-  { delay: 7000, msg: "SOS fully activated. Response underway.", type: "success" },
-];
-
-const RESPONDERS_DATA = [
-  { id: "R1", name: "Officer Chen", unit: "Unit 7", role: "LEAD SEARCH — ZONE A", emoji: "👮", eta: 120, status: "en-route", distance: "0.8 km", tasks: ["Sweep Zone A (north block)", "Report all visual sightings", "Maintain comms with Medic B"] },
-  { id: "R2", name: "Medic Team B", unit: "Ambulance 12", role: "MEDICAL STANDBY", emoji: "🚑", eta: 180, status: "en-route", distance: "1.2 km", tasks: ["Stage at Zone B entry point", "Prepare trauma kit", "Await visual confirmation before approach"] },
-  { id: "R3", name: "Maria Santos", unit: "Volunteer", role: "PASSIVE SCANNER — ZONE C", emoji: "🙋", distance: "0.3 km", eta: 40, status: "active", tasks: ["Scan Zone C (market area)", "Do NOT approach — observe only", "Report to R1 immediately if spotted"] },
-];
-
-const CROWD_ALERTS = [
-  { id: "C1", time: 18, msg: "Civilian match — elderly female, Zone C market area", confidence: 72, confirmed: false },
-  { id: "C2", time: 45, msg: "Possible match — Zone A building entrance, ground floor", confidence: 58, confirmed: false },
-];
-
-const EVIDENCE_TIMELINE = [
-  { t: 0, type: "GPS", icon: "📍", label: "Last known coordinates locked", detail: "Coordinates captured and sealed", status: "encrypted" },
-  { t: 5, type: "GEOFENCE", icon: "🔴", label: "Safe zone breach recorded", detail: "Perimeter exit — south boundary", status: "encrypted" },
-  { t: 12, type: "AUDIO", icon: "🎙️", label: "Ambient audio fragment captured", detail: "4.2s clip — background noise detected", status: "encrypted" },
-  { t: 20, type: "MOVEMENT", icon: "📡", label: "Movement trajectory logged", detail: "Bearing: 220° SW — walking pace", status: "synced" },
-  { t: 30, type: "CLASSIFICATION", icon: "⚖️", label: "Bias correction audit saved", detail: "Classification: MISSING — override logged", status: "secured" },
-  { t: 45, type: "HOSPITAL", icon: "🏥", label: "Hospital DB query logged", detail: "3 facilities checked — no match found", status: "synced" },
-  { t: 60, type: "TRANSIT", icon: "🚌", label: "Transit systems scanned", detail: "MRT, Bus Line 7 — no match found", status: "synced" },
-  { t: 90, type: "SHELTER", icon: "🏠", label: "Shelter check-in scan complete", detail: "2 shelters in radius — no match", status: "synced" },
-  { t: 120, type: "REPORT", icon: "📄", label: "Legal incident report generated", detail: "Full PDF compiled with all timestamps", status: "secured" },
-];
-
-const DATABASES = [
-  { id: "hospital", label: "Hospital Admissions", icon: "🏥", systems: ["Philippine General Hospital", "St. Luke's Medical", "Makati Medical Center", "Manila Doctors"] },
-  { id: "shelter", label: "Emergency Shelters", icon: "🏠", systems: ["DSWD Evacuation Center A", "Barangay 402 Shelter", "Red Cross Manila Hub"] },
-  { id: "transit", label: "Transit Lost & Found", icon: "🚌", systems: ["MRT Line 1", "MRT Line 2", "Bus Line 7", "PNR Station"] },
-  { id: "police", label: "Police Blotter", icon: "👮", systems: ["Manila PNP District 1", "PNP District 4", "QCPD North"] },
-];
-
-/* ═══════════════════════════════════════════
-   SOS PAGE
-═══════════════════════════════════════════ */
-function SOSPage({ onTrigger, incident }) {
-  const [selected, setSelected] = useState(VICTIM_PROFILES[0]);
-  const [phase, setPhase] = useState("idle");
-  const [holdProgress, setHoldProgress] = useState(0);
-  const [logs, setLogs] = useState([]);
-  const [elapsed, setElapsed] = useState(0);
-  const holdTimer = useRef(null);
-  const holdStart = useRef(null);
-  const elapsedTimer = useRef(null);
-
-  useEffect(() => { if (incident) setPhase("active"); }, [incident]);
-  useEffect(() => {
-    if (phase === "active") { elapsedTimer.current = setInterval(() => setElapsed(e => e + 1), 1000); }
-    return () => clearInterval(elapsedTimer.current);
-  }, [phase]);
-
-  const startHold = () => {
-    if (phase !== "idle") return;
-    setPhase("arming"); holdStart.current = Date.now();
-    holdTimer.current = setInterval(() => {
-      const p = Math.min(100, ((Date.now() - holdStart.current) / 2000) * 100);
-      setHoldProgress(p);
-      if (p >= 100) { clearInterval(holdTimer.current); triggerSOS(); }
-    }, 30);
+function createAsyncState() {
+  return {
+    status: "idle",
+    data: null,
+    error: "",
   };
-  const cancelHold = () => { if (phase !== "arming") return; clearInterval(holdTimer.current); setPhase("idle"); setHoldProgress(0); };
-  const triggerSOS = () => {
-    setPhase("triggered"); setLogs([]);
-    LOG_SEQUENCE.forEach(({ delay, msg, type }) => {
-      setTimeout(() => setLogs(l => [...l, { msg, type, time: new Date().toLocaleTimeString("en", { hour12: false }) }]), delay);
-    });
-    setTimeout(() => {
-      setPhase("active");
-      onTrigger({ id: `TR-${Date.now().toString().slice(-6)}`, profile: selected, coords: { lat: 14.5995 + (Math.random() - 0.5) * 0.01, lng: 120.9842 + (Math.random() - 0.5) * 0.01 }, startTime: Date.now(), zone: "Zone 4B — Eastside District" });
-    }, 7500);
+}
+
+function createClientLocationState() {
+  return {
+    status: "idle",
+    coords: null,
+    accuracy: null,
+    updatedAt: null,
+    address: "",
+    zone: "",
+    error: "",
   };
-  const fmt = s => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
-
-  return (
-    <div className="sos-page">
-      <div className="sos-left">
-        <div className="section-tag">// DEPENDENT PROFILE</div>
-        <h2 className="sos-title">Who are you<br />protecting?</h2>
-        <div className="profile-list">
-          {VICTIM_PROFILES.map(p => (
-            <div key={p.id} className={`profile-card ${selected.id === p.id ? "selected" : ""}`} onClick={() => phase === "idle" && setSelected(p)}>
-              <div className="profile-card-header">
-                <div className="profile-avatar">{p.name.charAt(0)}</div>
-                <div><div className="profile-name">{p.name}, {p.age}</div><div className="profile-condition">{p.condition}</div></div>
-                {selected.id === p.id && <div className="badge green" style={{ marginLeft: "auto" }}>ACTIVE</div>}
-              </div>
-              {selected.id === p.id && (
-                <div className="profile-details fade-in">
-                  <div className="detail-row"><span>Language</span><span>{p.language}</span></div>
-                  <div className="detail-row"><span>Behavior</span><span>{p.behavior}</span></div>
-                  <div style={{ marginTop: 12 }}>
-                    <div className="risk-row"><span className="risk-key">MEDICAL</span><div className="risk-track"><div className="risk-fill" style={{ width: `${p.medicalRisk}%`, background: p.medicalRisk > 70 ? "var(--red)" : "var(--yellow)" }} /></div><span className="risk-val">{p.medicalRisk}%</span></div>
-                    <div className="risk-row"><span className="risk-key">MOBILITY</span><div className="risk-track"><div className="risk-fill" style={{ width: `${p.mobilityRisk}%`, background: "var(--blue)" }} /></div><span className="risk-val">{p.mobilityRisk}%</span></div>
-                    <div className="risk-row"><span className="risk-key">THREAT</span><div className="risk-track"><div className="risk-fill" style={{ width: `${p.threatRisk}%`, background: p.threatRisk > 80 ? "var(--red)" : "var(--orange)" }} /></div><span className="risk-val">{p.threatRisk}%</span></div>
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="sos-right">
-        {phase === "idle" && (
-          <div className="sos-trigger-zone fade-in">
-            <div className="section-tag" style={{ textAlign: "center" }}>// EMERGENCY TRIGGER</div>
-            <p className="sos-instruction">Hold the button for 2 seconds to activate T.R.A.C.E. for <strong>{selected.name}</strong></p>
-            <div className="sos-btn-wrap">
-              <div className="sos-ring sos-ring-1" /><div className="sos-ring sos-ring-2" />
-              <button className="sos-btn" onMouseDown={startHold} onMouseUp={cancelHold} onMouseLeave={cancelHold} onTouchStart={startHold} onTouchEnd={cancelHold}>SOS</button>
-            </div>
-            <p className="sos-hint">Hold to activate · Release to cancel</p>
-          </div>
-        )}
-        {phase === "arming" && (
-          <div className="sos-trigger-zone fade-in">
-            <div className="section-tag" style={{ textAlign: "center" }}>// ARMING...</div>
-            <div className="sos-btn-wrap">
-              <svg className="sos-progress-ring" viewBox="0 0 120 120">
-                <circle cx="60" cy="60" r="54" fill="none" stroke="rgba(255,45,45,0.15)" strokeWidth="4" />
-                <circle cx="60" cy="60" r="54" fill="none" stroke="var(--red)" strokeWidth="4"
-                  strokeDasharray={`${2 * Math.PI * 54}`} strokeDashoffset={`${2 * Math.PI * 54 * (1 - holdProgress / 100)}`}
-                  strokeLinecap="round" style={{ transform: "rotate(-90deg)", transformOrigin: "center" }} />
-              </svg>
-              <button className="sos-btn arming" onMouseUp={cancelHold} onMouseLeave={cancelHold} onTouchEnd={cancelHold}>{Math.round(holdProgress)}%</button>
-            </div>
-            <p className="sos-hint" style={{ color: "var(--red)" }}>Keep holding...</p>
-          </div>
-        )}
-        {(phase === "triggered" || phase === "active") && (
-          <div className="sos-active fade-in">
-            <div className="sos-active-header"><div className="pulse-dot" /><span className="section-tag" style={{ margin: 0 }}>{phase === "triggered" ? "ACTIVATING T.R.A.C.E..." : `INCIDENT ACTIVE — ${fmt(elapsed)}`}</span></div>
-            <div className="sos-active-profile">
-              <div className="profile-avatar large">{selected.name.charAt(0)}</div>
-              <div><div className="profile-name">{selected.name}, {selected.age}</div><div className="profile-condition">{selected.condition}</div></div>
-              <div className="badge red" style={{ marginLeft: "auto", alignSelf: "flex-start" }}>{phase === "triggered" ? "INIT" : "LIVE"}</div>
-            </div>
-            <div className="log-feed">
-              <div className="section-tag">// SYSTEM LOG</div>
-              {logs.map((l, i) => <div key={i} className={`log-entry log-${l.type}`}><span className="log-time">{l.time}</span><span className="log-msg">{l.msg}</span></div>)}
-              {phase === "triggered" && <div className="log-cursor">_</div>}
-            </div>
-            {phase === "active" && <div className="sos-active-actions fade-up"><div className="badge green">✓ RESPONSE ACTIVE</div><p style={{ fontSize: 13, color: "var(--text-dim)", marginTop: 8 }}>Switch to <strong style={{ color: "var(--text)" }}>Command</strong> tab to view live map & responders</p></div>}
-          </div>
-        )}
-      </div>
-    </div>
-  );
 }
 
-/* ═══════════════════════════════════════════
-   LIVE MAP
-═══════════════════════════════════════════ */
-function LiveMap({ incident, elapsed }) {
-  const canvasRef = useRef(null);
-  const animRef = useRef(null);
-  const stateRef = useRef({ responders: [], tick: 0 });
-  const [aggressorAlert, setAggressorAlert] = useState(false);
-  const cx = incident?.coords?.lng ?? 120.9842;
-  const cy = incident?.coords?.lat ?? 14.5995;
-
-  useEffect(() => {
-    stateRef.current.responders = [
-      { id: "R1", emoji: "👮", x: cx - 0.006, y: cy - 0.004, speed: 0.0008 },
-      { id: "R2", emoji: "🚑", x: cx + 0.005, y: cy + 0.005, speed: 0.0006 },
-      { id: "R3", emoji: "🙋", x: cx + 0.007, y: cy - 0.003, speed: 0.0005 },
-    ];
-  }, [cx, cy]);
-
-  useEffect(() => { if (incident?.profile?.threatRisk > 80 && elapsed > 30) setAggressorAlert(true); }, [elapsed, incident]);
-
-  useEffect(() => {
-    const canvas = canvasRef.current; if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    const resize = () => { canvas.width = canvas.offsetWidth; canvas.height = canvas.offsetHeight; };
-    resize();
-    const W = () => canvas.width, H = () => canvas.height;
-    const toScreen = (lng, lat) => ({ x: (lng - (cx - 0.02)) * (W() / 0.04), y: H() - (lat - (cy - 0.02)) * (H() / 0.04) });
-
-    const draw = () => {
-      stateRef.current.tick++;
-      const t = stateRef.current.tick;
-      const w = W(), h = H();
-      ctx.fillStyle = "#070B10"; ctx.fillRect(0, 0, w, h);
-      ctx.strokeStyle = "rgba(255,255,255,0.025)"; ctx.lineWidth = 1;
-      for (let i = 0; i < w; i += 40) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, h); ctx.stroke(); }
-      for (let i = 0; i < h; i += 40) { ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(w, i); ctx.stroke(); }
-      ctx.strokeStyle = "rgba(255,255,255,0.04)"; ctx.lineWidth = 8;
-      [[0.2, 0, 0.2, 1], [0.5, 0, 0.5, 1], [0.8, 0, 0.8, 1], [0, 0.3, 1, 0.3], [0, 0.65, 1, 0.65]].forEach(([x1, y1, x2, y2]) => {
-        ctx.beginPath(); ctx.moveTo(x1 * w, y1 * h); ctx.lineTo(x2 * w, y2 * h); ctx.stroke();
-      });
-      const victim = toScreen(cx, cy);
-      for (let i = 0; i < 3; i++) {
-        const r = ((t * 0.8 + i * 30) % 90);
-        ctx.beginPath(); ctx.arc(victim.x, victim.y, r, 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(255,45,45,${(1 - r / 90) * 0.35})`; ctx.lineWidth = 1; ctx.stroke();
-      }
-      stateRef.current.responders = stateRef.current.responders.map(r => {
-        const dx = cx - r.x, dy = cy - r.y, dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist > 0.0005) return { ...r, x: r.x + (dx / dist) * r.speed, y: r.y + (dy / dist) * r.speed };
-        return r;
-      });
-      stateRef.current.responders.forEach(r => {
-        const rp = toScreen(r.x, r.y);
-        ctx.beginPath(); ctx.setLineDash([4, 8]); ctx.moveTo(rp.x, rp.y); ctx.lineTo(victim.x, victim.y);
-        ctx.strokeStyle = "rgba(0,255,136,0.15)"; ctx.lineWidth = 1; ctx.stroke(); ctx.setLineDash([]);
-        ctx.beginPath(); ctx.arc(rp.x, rp.y, 7, 0, Math.PI * 2);
-        ctx.fillStyle = "#00FF88"; ctx.shadowColor = "#00FF88"; ctx.shadowBlur = 12; ctx.fill(); ctx.shadowBlur = 0;
-        ctx.font = "13px sans-serif"; ctx.fillText(r.emoji, rp.x - 8, rp.y - 13);
-      });
-      if (aggressorAlert) {
-        const ax = cx + 0.008 + Math.sin(t * 0.02) * 0.001, ay = cy - 0.006 + Math.cos(t * 0.015) * 0.001;
-        const ap = toScreen(ax, ay);
-        ctx.beginPath(); ctx.arc(ap.x, ap.y, 7, 0, Math.PI * 2);
-        ctx.fillStyle = "#FF6B1A"; ctx.shadowColor = "#FF6B1A"; ctx.shadowBlur = 14; ctx.fill(); ctx.shadowBlur = 0;
-        ctx.fillStyle = "rgba(255,107,26,0.06)"; ctx.beginPath(); ctx.arc(ap.x, ap.y, 30, 0, Math.PI * 2); ctx.fill();
-        ctx.font = "12px sans-serif"; ctx.fillText("⚠️", ap.x - 8, ap.y - 13);
-      }
-      ctx.beginPath(); ctx.arc(victim.x, victim.y, 8, 0, Math.PI * 2);
-      ctx.fillStyle = "#FF2D2D"; ctx.shadowColor = "#FF2D2D"; ctx.shadowBlur = 20; ctx.fill(); ctx.shadowBlur = 0;
-      ctx.font = "bold 11px 'Space Mono',monospace"; ctx.fillStyle = "rgba(255,45,45,0.8)"; ctx.fillText("VICTIM", victim.x + 12, victim.y + 4);
-      animRef.current = requestAnimationFrame(draw);
-    };
-    draw();
-    return () => cancelAnimationFrame(animRef.current);
-  }, [cx, cy, aggressorAlert]);
-
-  return (
-    <div className="map-container">
-      <canvas ref={canvasRef} className="map-canvas" />
-      <div className="map-overlay-tl"><div className="map-label">LIVE PROBABILITY MAP</div><div className="map-coords">{cy.toFixed(4)}°N · {cx.toFixed(4)}°E</div></div>
-      <div className="map-legend">
-        <div className="legend-item"><span className="legend-dot red" />VICTIM</div>
-        <div className="legend-item"><span className="legend-dot green" />RESPONDERS</div>
-        {aggressorAlert && <div className="legend-item"><span className="legend-dot orange" />AGGRESSOR</div>}
-      </div>
-      {aggressorAlert && <div className="map-aggressor-alert fade-in"><span className="pulse-dot" />⚠ AGGRESSOR PROXIMITY — REROUTING RESPONDERS</div>}
-      <div className="map-responder-chips">
-        {RESPONDERS_DATA.map(r => (
-          <div key={r.id} className="resp-chip"><span>{r.emoji}</span><span className="resp-chip-name">{r.name}</span><span className="badge green" style={{ fontSize: 8 }}>EN ROUTE</span></div>
-        ))}
-      </div>
-    </div>
-  );
+function formatCoordinates(coords) {
+  return `Lat ${coords.lat.toFixed(5)}, Lng ${coords.lng.toFixed(5)}`;
 }
 
-/* ═══════════════════════════════════════════
-   RESPONDER PANEL
-═══════════════════════════════════════════ */
-function ResponderPanel({ incident, elapsed }) {
-  const [responders, setResponders] = useState(RESPONDERS_DATA);
-  const [alerts, setAlerts] = useState([]);
-  const [selected, setSelected] = useState("R1");
-
-  useEffect(() => {
-    setResponders(prev => prev.map(r => ({ ...r, eta: Math.max(0, r.eta - elapsed), status: elapsed >= r.eta ? "on-scene" : r.status })));
-    setAlerts(CROWD_ALERTS.filter(a => elapsed >= a.time));
-  }, [elapsed]);
-
-  const confirm = id => setAlerts(prev => prev.map(a => a.id === id ? { ...a, confirmed: true } : a));
-  const sel = responders.find(r => r.id === selected);
-
-  return (
-    <div className="resp-panel">
-      <div className="resp-list">
-        <div className="panel-section-title">DEPLOYED UNITS</div>
-        {responders.map(r => (
-          <div key={r.id} className={`resp-item ${selected === r.id ? "selected" : ""}`} onClick={() => setSelected(r.id)}>
-            <div className="resp-emoji">{r.emoji}</div>
-            <div className="resp-info-block">
-              <div className="resp-name-row"><span className="resp-name">{r.name}</span><span className={`badge ${r.status === "on-scene" ? "green" : r.status === "active" ? "blue" : "yellow"}`}>{r.status === "on-scene" ? "ON SCENE" : r.status === "active" ? "ACTIVE" : `${r.eta}s`}</span></div>
-              <div className="resp-role-text">{r.role}</div>
-              <div className="resp-dist">{r.distance} · {r.unit}</div>
-            </div>
-          </div>
-        ))}
-        {alerts.length > 0 && (<>
-          <div className="panel-section-title" style={{ marginTop: 12 }}>CROWD SCANNER ALERTS</div>
-          {alerts.map(a => (
-            <div key={a.id} className={`crowd-alert ${a.confirmed ? "confirmed" : ""}`}>
-              <div className="crowd-alert-header"><span className="crowd-time">T+{a.time}s</span><span className={`badge ${a.confidence > 70 ? "yellow" : "blue"}`}>{a.confidence}% MATCH</span>{a.confirmed && <span className="badge green">CONFIRMED</span>}</div>
-              <div className="crowd-msg">{a.msg}</div>
-              {!a.confirmed && <button className="btn-ghost" style={{ marginTop: 8, fontSize: 10, padding: "6px 12px" }} onClick={() => confirm(a.id)}>CONFIRM SIGHTING</button>}
-            </div>
-          ))}
-        </>)}
-      </div>
-      <div className="resp-detail">
-        {sel && <div className="fade-in">
-          <div className="resp-detail-header">
-            <div style={{ fontSize: 32 }}>{sel.emoji}</div>
-            <div><div style={{ fontSize: 16, fontWeight: 600 }}>{sel.name}</div><div style={{ fontSize: 12, color: "var(--text-dim)" }}>{sel.unit}</div><div className="section-tag" style={{ marginTop: 4 }}>{sel.role}</div></div>
-          </div>
-          <div className="resp-detail-stats">
-            <div className="detail-stat"><div className="detail-stat-val">{sel.distance}</div><div className="detail-stat-key">DISTANCE</div></div>
-            <div className="detail-stat"><div className="detail-stat-val" style={{ color: sel.status === "on-scene" ? "var(--green)" : "var(--yellow)" }}>{sel.status === "on-scene" ? "ON SCENE" : `${sel.eta}s`}</div><div className="detail-stat-key">ETA</div></div>
-            <div className="detail-stat"><div className="detail-stat-val" style={{ color: "var(--blue)" }}>{sel.tasks.length}</div><div className="detail-stat-key">TASKS</div></div>
-          </div>
-          <div className="panel-section-title" style={{ marginTop: 20 }}>ASSIGNED TASKS</div>
-          <div className="task-list">{sel.tasks.map((t, i) => <div key={i} className="task-item"><div className="task-num">{String(i + 1).padStart(2, "0")}</div><div className="task-text">{t}</div></div>)}</div>
-          <div className="panel-section-title" style={{ marginTop: 20 }}>GEMINI BRIEFING</div>
-          <div className="gemini-brief"><div className="gemini-tag">AI GENERATED</div><p>Subject is <strong>{incident?.profile?.name}</strong>, {incident?.profile?.age}. <strong>{incident?.profile?.condition}</strong>. Behavioral pattern: {incident?.profile?.behavior}. Language: {incident?.profile?.language}. Approach calmly — do not use sirens near subject.</p></div>
-        </div>}
-      </div>
-    </div>
-  );
+function getClientLocationErrorMessage(error) {
+  switch (error?.code) {
+    case 1:
+      return "Location access was denied. TRACE is falling back to the demo client location until GPS access is allowed.";
+    case 2:
+      return "TRACE could not read the device location. The demo client location is staying active for now.";
+    case 3:
+      return "Location capture timed out. TRACE is still using the demo client location.";
+    default:
+      return "TRACE could not capture a live device location. The demo client location is still active.";
+  }
 }
 
-/* ═══════════════════════════════════════════
-   EVIDENCE VAULT
-═══════════════════════════════════════════ */
-const STATUS_COLOR = { encrypted: "green", synced: "blue", secured: "yellow" };
-
-function EvidenceVault({ incident, elapsed }) {
-  const visible = EVIDENCE_TIMELINE.filter(e => elapsed >= e.t);
-  const reportReady = elapsed >= 120;
-
-  const downloadReport = () => {
-    const txt = ["T.R.A.C.E. INCIDENT REPORT", "=".repeat(30), `ID: INC #${incident?.id}`, `Subject: ${incident?.profile?.name}, ${incident?.profile?.age}`, `Condition: ${incident?.profile?.condition}`, `Location: ${incident?.zone}`, `Generated: ${new Date().toISOString()}`, "", "EVIDENCE LOG:", ...visible.map(e => `[${e.type}] ${e.label}`), "", "BIAS CORRECTION: PASSED", "CLASSIFICATION: MISSING PERSON"].join("\n");
-    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([txt], { type: "text/plain" })); a.download = `TRACE_${incident?.id}.txt`; a.click();
-  };
-
-  return (
-    <div className="evidence-page">
-      <div className="evidence-list">
-        <div className="evidence-header-row"><div className="panel-section-title" style={{ margin: 0 }}>LIVE EVIDENCE CAPTURE</div><div className="badge green">{visible.length} ITEMS</div></div>
-        <div className="ev-timeline">
-          {visible.map((e, i) => (
-            <div key={i} className="ev-item fade-in" style={{ animationDelay: `${i * 0.05}s` }}>
-              <div className="ev-line-wrap"><div className={`ev-dot ${STATUS_COLOR[e.status]}`} />{i < visible.length - 1 && <div className="ev-connector" />}</div>
-              <div className="ev-content">
-                <div className="ev-top-row"><span className="ev-icon">{e.icon}</span><span className="ev-type">{e.type}</span><span className={`badge ${STATUS_COLOR[e.status]}`}>{e.status.toUpperCase()}</span><span className="ev-ts">T+{e.t}s</span></div>
-                <div className="ev-label">{e.label}</div><div className="ev-detail">{e.detail}</div>
-              </div>
-            </div>
-          ))}
-          {!reportReady && <div className="ev-pending"><div className="ev-pending-dot" /><span>Capturing more evidence...</span></div>}
-        </div>
-      </div>
-      <div className="evidence-right">
-        <div className="panel-section-title">VAULT STATUS</div>
-        <div className="vault-stats">
-          {[["ENCRYPTED", visible.filter(e => e.status === "encrypted").length, "var(--green)"], ["SYNCED", visible.filter(e => e.status === "synced").length, "var(--blue)"], ["SECURED", visible.filter(e => e.status === "secured").length, "var(--yellow)"]].map(([l, v, c]) => (
-            <div key={l} className="vault-stat-card"><div className="vault-stat-val" style={{ color: c }}>{v}</div><div className="vault-stat-key">{l}</div></div>
-          ))}
-        </div>
-        <div className="panel-section-title" style={{ marginTop: 16 }}>PROFILE LOCK</div>
-        <div className="profile-lock-card">
-          {[["NAME", incident?.profile?.name], ["AGE", incident?.profile?.age], ["CONDITION", incident?.profile?.condition], ["LANGUAGE", incident?.profile?.language], ["CLASSIFICATION", "MISSING PERSON"], ["BIAS CHECK", "✓ PASSED"]].map(([k, v]) => (
-            <div key={k} className="lock-row"><span className="lock-key">{k}</span><span className="lock-val" style={k === "BIAS CHECK" ? { color: "var(--green)" } : {}}>{v}</span></div>
-          ))}
-        </div>
-        <div className="panel-section-title" style={{ marginTop: 16 }}>LEGAL REPORT</div>
-        <div className="report-card">
-          {reportReady ? (<><div className="badge green" style={{ marginBottom: 10 }}>REPORT READY</div><p style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 14, lineHeight: 1.6 }}>Full incident report compiled with all evidence timestamps and audit trail.</p><button className="btn-primary" onClick={downloadReport}>DOWNLOAD REPORT</button></>) : (<><div className="badge yellow" style={{ marginBottom: 10 }}>COMPILING...</div><p style={{ fontSize: 12, color: "var(--text-dim)", lineHeight: 1.6, marginBottom: 10 }}>Auto-generating legal report. ({Math.max(0, 120 - elapsed)}s remaining)</p><div className="compile-bar"><div className="compile-fill" style={{ width: `${Math.min(100, (elapsed / 120) * 100)}%` }} /></div></>)}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════
-   CROSS-MATCH (with Gemini AI)
-═══════════════════════════════════════════ */
-const SCAN_DELAY = 8;
-
-function CrossMatch({ incident, elapsed }) {
-  const [geminiProfile, setGeminiProfile] = useState(null);
-  const [geminiLoading, setGeminiLoading] = useState(false);
-  const [geminiError, setGeminiError] = useState(null);
-  const scanned = DATABASES.filter((_, i) => elapsed >= (i + 1) * SCAN_DELAY);
-  const scanning = DATABASES.find((_, i) => elapsed >= i * SCAN_DELAY && elapsed < (i + 1) * SCAN_DELAY);
-
-  const runGemini = async () => {
-    if (!incident?.profile) return;
-    setGeminiLoading(true); setGeminiError(null); setGeminiProfile(null);
-    try {
-      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-      if (!apiKey) throw new Error("Missing Gemini API key");
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          systemInstruction: {
-            parts: [
-              {
-                text: "You are T.R.A.C.E. crisis AI. Return only valid JSON with keys: riskLevel (CRITICAL|HIGH|MODERATE), approachStrategy (string), searchPriority (array of 3 strings), doList (array of 3 strings), dontList (array of 2 strings), languageTip (string), medicalNote (string). No markdown. No backticks.",
-              },
-            ],
-          },
-          contents: [
-            {
-              role: "user",
-              parts: [
-                {
-                  text: `Generate field briefing: Name:${incident.profile.name}, Age:${incident.profile.age}, Condition:${incident.profile.condition}, Behavior:${incident.profile.behavior}, Language:${incident.profile.language}, Medical risk:${incident.profile.medicalRisk}%`,
-                },
-              ],
-            },
-          ],
-          generationConfig: {
-            responseMimeType: "application/json",
-          },
-        }),
-      });
-      if (!res.ok) throw new Error(`Gemini request failed with ${res.status}`);
-      const data = await res.json();
-      const text = data.candidates?.[0]?.content?.parts?.map(part => part.text || "").join("") || "";
-      setGeminiProfile(JSON.parse(text.replace(/```json|```/g, "").trim()));
-    } catch (e) {
-      setGeminiError("Using simulated Gemini profile for demo. Add VITE_GEMINI_API_KEY to enable live Gemini responses.");
-      setGeminiProfile({
-        riskLevel: incident.profile.medicalRisk > 70 ? "CRITICAL" : "HIGH",
-        approachStrategy: `Approach ${incident.profile.name} calmly and quietly — avoid sudden movements or loud commands.`,
-        searchPriority: ["Enclosed spaces (buildings, stairwells)", "Nearby water bodies or green spaces", "Market areas with dense crowds"],
-        doList: ["Use subject's first name directly", "Speak in primary language first", "Offer physical support immediately"],
-        dontList: ["Do not use sirens in proximity", "Do not approach with multiple officers at once"],
-        languageTip: `Begin in ${incident.profile.language.split("/")[0].trim()} — switch to secondary language if no response.`,
-        medicalNote: `Subject has ${incident.profile.condition} — prepare for disorientation and handle with care.`
-      });
+function captureClientLocation() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(
+        new Error(
+          "This browser does not support live geolocation. TRACE is using the demo client location."
+        )
+      );
+      return;
     }
-    setGeminiLoading(false);
+
+    navigator.geolocation.getCurrentPosition(
+      position => {
+        resolve({
+          coords: {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+          },
+          accuracy:
+            typeof position.coords.accuracy === "number"
+              ? Math.round(position.coords.accuracy)
+              : null,
+          updatedAt: new Date().toISOString(),
+        });
+      },
+      error => reject(new Error(getClientLocationErrorMessage(error))),
+      CLIENT_LOCATION_OPTIONS
+    );
+  });
+}
+
+function buildClientLocationState(location) {
+  return {
+    status: "ready",
+    coords: location.coords,
+    accuracy: location.accuracy,
+    updatedAt: location.updatedAt,
+    address: formatCoordinates(location.coords),
+    zone: location.accuracy
+      ? `Live device location | +/- ${location.accuracy} m`
+      : "Live device location",
+    error: "",
   };
-
-  const riskColor = { CRITICAL: "var(--red)", HIGH: "var(--orange)", MODERATE: "var(--yellow)" };
-
-  return (
-    <div className="crossmatch-page">
-      <div className="crossmatch-left">
-        <div className="panel-section-title">DATABASE CROSS-MATCH</div>
-        <p style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 16, lineHeight: 1.6 }}>Silent real-time scan — no manual calls required.</p>
-        <div className="db-list">
-          {DATABASES.map((db, i) => {
-            const done = scanned.find(s => s.id === db.id);
-            const isScanning = scanning?.id === db.id;
-            const progress = isScanning ? ((elapsed - i * SCAN_DELAY) / SCAN_DELAY) * 100 : done ? 100 : 0;
-            return (
-              <div key={db.id} className={`db-card ${isScanning ? "scanning" : ""} ${done ? "done" : ""}`}>
-                <div className="db-card-header">
-                  <span className="db-icon">{db.icon}</span>
-                  <div className="db-info"><div className="db-label">{db.label}</div><div className="db-systems">{db.systems.join(" · ")}</div></div>
-                  <div className="db-status">
-                    {done && <span className="badge green">NO MATCH</span>}
-                    {isScanning && <span className="badge yellow">SCANNING</span>}
-                    {!done && !isScanning && <span className="badge" style={{ background: "var(--bg3)", color: "var(--text-dim)", border: "1px solid var(--border)" }}>QUEUED</span>}
-                  </div>
-                </div>
-                {(isScanning || done) && <div className="db-progress-bar"><div className="db-progress-fill" style={{ width: `${progress}%`, background: done ? "var(--green)" : "var(--yellow)", transition: isScanning ? "width 0.5s linear" : "none" }} /></div>}
-                {isScanning && <div className="db-scanning-text">Scanning {db.systems[0]}...</div>}
-              </div>
-            );
-          })}
-        </div>
-        <div className="crossmatch-summary">
-          <div className="panel-section-title" style={{ marginBottom: 12 }}>SCAN SUMMARY</div>
-          <div className="summary-stats">
-            <div className="summary-stat"><div className="summary-val">{scanned.length}</div><div className="summary-key">DONE</div></div>
-            <div className="summary-stat"><div className="summary-val" style={{ color: "var(--green)" }}>0</div><div className="summary-key">MATCHES</div></div>
-            <div className="summary-stat"><div className="summary-val" style={{ color: "var(--yellow)" }}>{DATABASES.length - scanned.length - (scanning ? 1 : 0)}</div><div className="summary-key">QUEUED</div></div>
-          </div>
-        </div>
-      </div>
-
-      <div className="crossmatch-right">
-        <div className="panel-section-title">GEMINI AI FIELD BRIEFING</div>
-        <p style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 16, lineHeight: 1.6 }}>Real Gemini API call — generates live responder guidance from subject profile.</p>
-        {!geminiProfile && !geminiLoading && (
-          <div className="gemini-trigger"><div style={{ fontSize: 32, marginBottom: 12 }}>🧠</div><div style={{ fontSize: 14, fontWeight: 500, marginBottom: 6 }}>Generate AI Briefing</div><div style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 16, lineHeight: 1.6 }}>Gemini will analyze {incident?.profile?.name}'s profile and generate field instructions.</div><button className="btn-primary" onClick={runGemini}>RUN GEMINI ANALYSIS</button></div>
-        )}
-        {geminiLoading && <div className="gemini-loading"><div className="gemini-spinner" /><div className="section-tag" style={{ marginTop: 12 }}>GEMINI ANALYZING...</div></div>}
-        {geminiError && <div className="gemini-error-note">{geminiError}</div>}
-        {geminiProfile && (
-          <div className="gemini-result fade-in">
-            <div className="gemini-risk-banner" style={{ borderColor: riskColor[geminiProfile.riskLevel], background: `${riskColor[geminiProfile.riskLevel]}10` }}>
-              <span style={{ color: riskColor[geminiProfile.riskLevel], fontFamily: "'Bebas Neue',sans-serif", fontSize: 22, letterSpacing: "0.1em" }}>{geminiProfile.riskLevel}</span>
-              <span style={{ fontSize: 12, color: "var(--text-dim)", marginLeft: 8 }}>RISK LEVEL</span>
-            </div>
-            <div className="gemini-section"><div className="gemini-section-title">APPROACH STRATEGY</div><p className="gemini-text">{geminiProfile.approachStrategy}</p></div>
-            <div className="gemini-section"><div className="gemini-section-title">SEARCH PRIORITY ZONES</div>{geminiProfile.searchPriority.map((z, i) => <div key={i} className="priority-zone"><span className="priority-num">#{i + 1}</span><span className="gemini-text">{z}</span></div>)}</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <div className="gemini-section"><div className="gemini-section-title" style={{ color: "var(--green)" }}>DO</div>{geminiProfile.doList.map((d, i) => <div key={i} className="do-item">✓ {d}</div>)}</div>
-              <div className="gemini-section"><div className="gemini-section-title" style={{ color: "var(--red)" }}>DON'T</div>{geminiProfile.dontList.map((d, i) => <div key={i} className="dont-item">✗ {d}</div>)}</div>
-            </div>
-            <div className="gemini-section"><div className="gemini-section-title">LANGUAGE TIP</div><p className="gemini-text">{geminiProfile.languageTip}</p></div>
-            <div className="gemini-section"><div className="gemini-section-title">MEDICAL NOTE</div><p className="gemini-text">{geminiProfile.medicalNote}</p></div>
-            <button className="btn-ghost" style={{ marginTop: 12, width: "100%" }} onClick={runGemini}>REGENERATE</button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
 }
 
-/* ═══════════════════════════════════════════
-   PROFILE PAGE
-═══════════════════════════════════════════ */
-function ProfilePage() {
-  const [profiles, setProfiles] = useState(VICTIM_PROFILES);
-  const [selected, setSelected] = useState(VICTIM_PROFILES[0]);
-  const [editing, setEditing] = useState(false);
-  const [form, setForm] = useState({});
-  const riskColor = v => v > 70 ? "var(--red)" : v > 40 ? "var(--yellow)" : "var(--green)";
-
-  return (
-    <div className="profile-page">
-      <div className="profile-sidebar">
-        <div className="panel-section-title">REGISTERED DEPENDANTS</div>
-        {profiles.map(p => (
-          <div key={p.id} className={`profile-list-item ${selected?.id === p.id ? "selected" : ""}`} onClick={() => { setSelected(p); setEditing(false); }}>
-            <div className="profile-list-avatar">{p.name.charAt(0)}</div>
-            <div><div className="profile-list-name">{p.name}, {p.age}</div><div className="profile-list-cond">{p.condition}</div></div>
-          </div>
-        ))}
-        <button className="btn-ghost" style={{ marginTop: 12, width: "100%", fontSize: 10 }}>+ ADD DEPENDANT</button>
-      </div>
-      <div className="profile-detail">
-        {!editing ? (
-          <div className="fade-in">
-            <div className="pd-header">
-              <div className="pd-avatar">{selected?.name?.charAt(0)}</div>
-              <div><div className="pd-name">{selected?.name}, {selected?.age}</div><div className="pd-cond">{selected?.condition}</div><div className="pd-id">{selected?.id}</div></div>
-              <button className="btn-ghost" style={{ marginLeft: "auto" }} onClick={() => { setForm({ ...selected }); setEditing(true); }}>EDIT</button>
-            </div>
-            <div className="pd-grid">
-              <div className="pd-section">
-                <div className="panel-section-title">BASIC INFO</div>
-                {[["Language", selected?.language], ["Behavior", selected?.behavior], ["Emergency Contact", selected?.contact]].map(([k, v]) => (
-                  <div key={k} className="pd-row"><span className="pd-key">{k}</span><span className="pd-val">{v}</span></div>
-                ))}
-              </div>
-              <div className="pd-section">
-                <div className="panel-section-title">RISK ASSESSMENT</div>
-                {[["MEDICAL", selected?.medicalRisk], ["MOBILITY", selected?.mobilityRisk], ["THREAT", selected?.threatRisk]].map(([k, v]) => (
-                  <div key={k} className="risk-row"><span className="risk-key">{k}</span><div className="risk-track"><div className="risk-fill" style={{ width: `${v}%`, background: riskColor(v) }} /></div><span className="risk-val">{v}%</span></div>
-                ))}
-              </div>
-            </div>
-            <div className="pd-section" style={{ marginTop: 20 }}>
-              <div className="panel-section-title">BIAS PROTECTION</div>
-              <div className="bias-card"><div className="badge green" style={{ marginBottom: 8 }}>✓ ACTIVE</div><p style={{ fontSize: 13, color: "var(--text-dim)", lineHeight: 1.7 }}>T.R.A.C.E. will automatically flag and override any misclassification of <strong style={{ color: "var(--text)" }}>{selected?.name}</strong> as a "runaway" or low-priority case.</p></div>
-            </div>
-          </div>
-        ) : (
-          <div className="pd-edit fade-in">
-            <div className="panel-section-title">EDITING — {form.id}</div>
-            {[["Name", "name"], ["Age", "age"], ["Condition", "condition"], ["Language", "language"], ["Behavior", "behavior"], ["Emergency Contact", "contact"]].map(([label, key]) => (
-              <div key={key} className="edit-field">
-                <label className="edit-label">{label}</label>
-                <input className="edit-input" value={form[key] || ""} onChange={e => setForm({ ...form, [key]: e.target.value })} />
-              </div>
-            ))}
-            <div className="edit-actions">
-              <button className="btn-primary" onClick={() => { setProfiles(prev => prev.map(p => p.id === form.id ? form : p)); setSelected(form); setEditing(false); }}>SAVE</button>
-              <button className="btn-ghost" onClick={() => setEditing(false)}>CANCEL</button>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════
-   DASHBOARD
-═══════════════════════════════════════════ */
-function DashboardPage({ incident }) {
-  const [tab, setTab] = useState("MAP");
-  const [elapsed, setElapsed] = useState(0);
-  useEffect(() => {
-    if (!incident) return;
-    const start = incident.startTime || Date.now();
-    const t = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000);
-    return () => clearInterval(t);
-  }, [incident]);
-  const fmt = s => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
-
-  if (!incident) return (
-    <div className="dash-empty">
-      <div className="section-tag">// NO ACTIVE INCIDENT</div>
-      <h2 className="dash-empty-title">Command Center<br />Standing By</h2>
-      <p>Trigger an SOS from the <strong>SOS tab</strong> to activate.</p>
-      <div className="dash-standby-grid">
-        {["T — TRIGGER", "R — RECONSTRUCT", "A — ACTIVATE", "C — COORDINATE", "E — EVIDENCE"].map((s, i) => (
-          <div key={i} className="standby-card"><div className="standby-letter">{s.charAt(0)}</div><div className="standby-text">{s.slice(4)}</div></div>
-        ))}
-      </div>
-    </div>
-  );
-
-  return (
-    <div className="dashboard">
-      <div className="dash-header">
-        <div><div className="dash-id"><span className="pulse-dot" />INC #{incident.id}</div><div className="dash-victim">{incident.profile.name}, {incident.profile.age} — {incident.profile.condition}</div><div className="dash-zone">{incident.zone}</div></div>
-        <div className="dash-header-right"><div className="dash-timer">{fmt(elapsed)}</div><div className="dash-timer-label">ELAPSED</div><div className="badge red">CRITICAL</div></div>
-      </div>
-      <div className="dash-tabs">
-        {["MAP", "RESPONDERS", "EVIDENCE", "CROSS-MATCH"].map(t => <button key={t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>{t}</button>)}
-      </div>
-      <div className="dash-content">
-        {tab === "MAP" && <LiveMap incident={incident} elapsed={elapsed} />}
-        {tab === "RESPONDERS" && <ResponderPanel incident={incident} elapsed={elapsed} />}
-        {tab === "EVIDENCE" && <EvidenceVault incident={incident} elapsed={elapsed} />}
-        {tab === "CROSS-MATCH" && <CrossMatch incident={incident} elapsed={elapsed} />}
-      </div>
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════
-   ROOT APP
-═══════════════════════════════════════════ */
-function readGoogTransCookie() {
-  const cookie = document.cookie.split("; ").find(entry => entry.startsWith("googtrans="));
-  return cookie ? decodeURIComponent(cookie.split("=")[1]) : "";
-}
-
-function writeGoogTransCookie(lang) {
-  const value = `/en/${lang}`;
-  document.cookie = `googtrans=${encodeURIComponent(value)};path=/`;
-  if (window.location.hostname.includes(".")) {
-    document.cookie = `googtrans=${encodeURIComponent(value)};path=/;domain=${window.location.hostname}`;
-  }
-}
-
-function clearGoogTransCookie() {
-  document.cookie = "googtrans=;path=/;expires=Thu, 01 Jan 1970 00:00:00 GMT";
-  if (window.location.hostname.includes(".")) {
-    document.cookie = `googtrans=;path=/;domain=${window.location.hostname};expires=Thu, 01 Jan 1970 00:00:00 GMT`;
-  }
-}
-
-function applyGoogleTranslateLanguage(lang, attempt = 0) {
-  const combo = document.querySelector(".goog-te-combo");
-  if (!combo) {
-    if (attempt < 20) {
-      window.setTimeout(() => applyGoogleTranslateLanguage(lang, attempt + 1), 300);
-    }
-    return;
-  }
-  if (combo.value !== lang) {
-    combo.value = lang;
-    combo.dispatchEvent(new Event("change"));
-  }
-}
-
-function LanguageSwitcher({ language, onChange }) {
-  const [open, setOpen] = useState(false);
-  const activeLanguage = LANGUAGE_OPTIONS.find(option => option.code === language) || LANGUAGE_OPTIONS[0];
-
-  useEffect(() => {
-    const close = event => {
-      if (!event.target.closest(".language-switcher")) {
-        setOpen(false);
-      }
+function applyClientLocationToProfile(profile, locationState) {
+  if (!locationState.coords) {
+    return {
+      ...profile,
+      locationSource: "demo",
+      locationAccuracy: null,
     };
-    document.addEventListener("click", close);
-    return () => document.removeEventListener("click", close);
-  }, []);
+  }
 
+  return {
+    ...profile,
+    coords: locationState.coords,
+    address: locationState.address || profile.address,
+    zone: locationState.zone || profile.zone,
+    locationSource: "live",
+    locationAccuracy: locationState.accuracy,
+  };
+}
+
+function applyIncidentLocationToProfile(profile, incident) {
+  return {
+    ...profile,
+    coords: incident.coords,
+    address: incident.address || profile.address,
+    zone: incident.zone || profile.zone,
+    locationSource: incident.locationSource || "demo",
+    locationAccuracy: incident.locationAccuracy ?? null,
+  };
+}
+
+function getClientLocationPanelCopy(profile, clientLocation) {
+  if (clientLocation.status === "ready") {
+    const capturedAt = clientLocation.updatedAt
+      ? ` Captured at ${new Date(clientLocation.updatedAt).toLocaleTimeString()}.`
+      : "";
+    const accuracyCopy = clientLocation.accuracy
+      ? ` Accuracy about +/- ${clientLocation.accuracy} meters.`
+      : "";
+    const retainedLock = clientLocation.error
+      ? ` Last live lock retained. ${clientLocation.error}`
+      : "";
+
+    return {
+      status: "clear",
+      title: "Live GPS ready",
+      copy: `TRACE will use ${profile.address} for the client's SOS pin.${accuracyCopy}${capturedAt}${retainedLock}`,
+    };
+  }
+
+  if (clientLocation.status === "locating") {
+    return {
+      status: "syncing",
+      title: "Locating device",
+      copy:
+        "TRACE is requesting browser location so the SOS package lands on the client's real position instead of the demo profile.",
+    };
+  }
+
+  if (clientLocation.status === "error") {
+    return {
+      status: "review",
+      title: "Using fallback profile location",
+      copy: `${clientLocation.error} Current fallback: ${profile.address}.`,
+    };
+  }
+
+  return {
+    status: "queued",
+    title: "GPS not captured yet",
+    copy:
+      "Allow device location before triggering SOS if you want the live Google map to center on the client's actual position.",
+  };
+}
+
+function createServiceState(profile, mode = "standby") {
+  return getDemoHelpServices(profile).map(service => ({
+    ...service,
+    status:
+      mode === "active"
+        ? service.category === "responder"
+          ? "en-route"
+          : service.category === "authority"
+            ? "alerted"
+            : "syncing"
+        : mode === "resolved"
+          ? "resolved"
+          : "standby",
+    lastUpdate: null,
+  }));
+}
+
+function createActivationState(profile, mode = "standby") {
+  return getActivationGroups(profile).map(group => ({
+    ...group,
+    status:
+      mode === "active"
+        ? group.tone === "trusted"
+          ? "notified"
+          : "alerted"
+        : mode === "resolved"
+          ? "resolved"
+          : "standby",
+    lastAlert: null,
+  }));
+}
+
+function createInitialCrossMatchState() {
+  return {
+    cycleCount: 0,
+    lastSweepAt: null,
+    nextSweepIn: 90,
+    records: CROSS_MATCH_SYSTEMS.map(system => ({
+      ...system,
+      status: "queued",
+      result: "Waiting for active case",
+      note: "No silent sweep has run yet.",
+    })),
+  };
+}
+
+function getLanguageCopy(language) {
+  return CLIENT_COPY_BY_LANGUAGE[language] ?? CLIENT_COPY_BY_LANGUAGE.en;
+}
+
+function normalizeLanguage(language) {
+  return LANGUAGE_OPTIONS.some(option => option.code === language)
+    ? language
+    : "en";
+}
+
+function buildLocalizedClientCopy(profile, incidentActive, language) {
+  const copy = getLanguageCopy(language);
+  const profileCopy = CLIENT_PROFILE_COPY[profile.id]?.[language] ?? {};
+
+  return {
+    ...copy,
+    statusMessage: incidentActive
+      ? copy.incidentActive
+      : copy.incidentIdle,
+    profileCondition: profileCopy.condition ?? profile.condition,
+    profileSituation: profileCopy.situation ?? profile.situation,
+  };
+}
+
+function buildCrossMatchRecords(profile, cycleCount) {
+  return CROSS_MATCH_SYSTEMS.map(system => {
+    if (system.id === "hospital") {
+      return {
+        ...system,
+        status: "clear",
+        result: "No confirmed admission",
+        note: `${cycleCount + 2} intake feeds scanned. No direct match for ${profile.name}.`,
+      };
+    }
+
+    if (system.id === "shelter") {
+      if (profile.threatRisk > 85 && cycleCount > 1) {
+        return {
+          ...system,
+          status: "review",
+          result: "Manual review queued",
+          note: "One anonymized late check-in partially matches behavior and timing.",
+        };
+      }
+
+      return {
+        ...system,
+        status: "clear",
+        result: "No confirmed shelter intake",
+        note: `${cycleCount + 1} partner shelter check-ins swept silently.`,
+      };
+    }
+
+    return {
+      ...system,
+      status: "clear",
+      result: "No transit recovery signal",
+      note: "Lost-and-found and mobility records scanned for silent trace evidence.",
+    };
+  });
+}
+
+function resolveStatusTone(status) {
+  switch (status) {
+    case "resolved":
+    case "on-scene":
+    case "clear":
+      return "tone-green";
+    case "syncing":
+    case "en-route":
+      return "tone-blue";
+    case "alerted":
+    case "notified":
+    case "review":
+      return "tone-amber";
+    case "queued":
+      return "tone-dim";
+    default:
+      return "tone-red";
+  }
+}
+
+function resolveStatusLabel(status) {
+  switch (status) {
+    case "en-route":
+      return "En route";
+    case "on-scene":
+      return "On scene";
+    case "notified":
+      return "Notified";
+    case "syncing":
+      return "Syncing";
+    case "resolved":
+      return "Resolved";
+    case "queued":
+      return "Queued";
+    case "clear":
+      return "Clear";
+    case "review":
+      return "Review";
+    default:
+      return status.charAt(0).toUpperCase() + status.slice(1);
+  }
+}
+
+function getServiceActionLabel(service) {
+  if (service.category === "service") {
+    return "Refresh sync";
+  }
+
+  if (service.status === "standby") {
+    return "Send alert";
+  }
+
+  if (service.status === "alerted") {
+    return "Mark en route";
+  }
+
+  if (service.status === "en-route") {
+    return "Mark on scene";
+  }
+
+  return "Review";
+}
+
+function buildBriefing(profile, incident) {
+  return [
+    `Incident ${incident ? incident.id : "standby"}`,
+    `Client: ${profile.name}, ${profile.age}`,
+    `Condition: ${profile.condition}`,
+    `Primary language: ${profile.language}`,
+    `Zone: ${profile.zone}`,
+    `Situation: ${profile.situation}`,
+    "Instruction: keep the briefing unified so the client never has to retell the story repeatedly.",
+  ].join("\n");
+}
+
+function buildIncidentReport({ incident, profile, services, auditTrail, traumaHandoff }) {
+  const lines = [
+    "TRACE INCIDENT REPORT",
+    "====================",
+    `Incident: ${incident.id}`,
+    `Status: ${incident.status}`,
+    `Client: ${profile.name}, ${profile.age}`,
+    `Condition: ${profile.condition}`,
+    `Language: ${profile.language}`,
+    `Address: ${incident.address || profile.address}`,
+    `Zone: ${incident.zone}`,
+    `Location source: ${incident.locationSource || profile.locationSource || "demo"}`,
+    `Triggered at: ${incident.triggeredAt}`,
+    `Resolved at: ${incident.resolvedAt ?? "Pending"}`,
+    `Resolution notes: ${incident.resolutionNotes || "Pending resolution."}`,
+    "",
+    "SERVICE STATUS",
+    ...services.map(
+      service =>
+        `- ${service.name}: ${resolveStatusLabel(service.status)} | ${service.distanceLabel} | ETA ${service.etaMinutes} min`
+    ),
+    "",
+    "AUDIT TRAIL",
+    ...auditTrail
+      .slice()
+      .reverse()
+      .map(
+        entry =>
+          `- ${entry.timestamp} | ${entry.kind.toUpperCase()} | ${entry.message} | seal=${entry.seal}`
+      ),
+  ];
+
+  if (traumaHandoff) {
+    lines.push(
+      "",
+      "POST-CRISIS HANDOFF",
+      `Headline: ${traumaHandoff.reportHeadline}`,
+      `Victim support: ${traumaHandoff.victimSupport}`,
+      `Family support: ${traumaHandoff.familySupport}`,
+      `Forms route: ${traumaHandoff.formTitle}`
+    );
+  }
+
+  return lines.join("\n");
+}
+
+function StatusChip({ status }) {
   return (
-    <div className="language-switcher">
-      <button className="language-button" type="button" onClick={event => { event.stopPropagation(); setOpen(prev => !prev); }}>
-        <span className="language-label">Language</span>
-        <span>{activeLanguage.label}</span>
-        <span className="language-caret">{open ? "▲" : "▼"}</span>
-      </button>
-      {open && (
-        <div className="language-menu">
-          {LANGUAGE_OPTIONS.map(option => (
-            <button
-              key={option.code}
-              className={`language-option ${option.code === language ? "active" : ""}`}
-              type="button"
-              onClick={() => {
-                onChange(option.code);
-                setOpen(false);
-              }}
-            >
-              <span>{option.label}</span>
-              <span className="language-native">{option.nativeLabel}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+    <span className={`mini-status ${resolveStatusTone(status)}`}>
+      {resolveStatusLabel(status)}
+    </span>
   );
 }
 
-function InnovationPage() {
+function RoleGate({ onChoose }) {
   return (
-    <div className="innovation-page">
-      <div className="innovation-hero">
-        <section className="innovation-hero-card">
-          <div className="section-tag">// NEXT INNOVATION LAYERS</div>
-          <h1>Search Faster.<br />Protect Smarter.</h1>
-          <p className="innovation-lead">TRACE is evolving from a reactive emergency workflow into an intelligence layer for missing-person response, domestic violence escape support, and post-crisis recovery.</p>
-          <div className="innovation-pills">
-            <span className="innovation-pill">Behavioral profiling</span>
-            <span className="innovation-pill">Hyper-local scanner network</span>
-            <span className="innovation-pill">Threat route prediction</span>
-            <span className="innovation-pill">Trauma handoff automation</span>
+    <div className="role-gate">
+      <div className="role-gate-shell">
+        <section className="role-gate-hero">
+          <div className="section-tag">TRACE launch</div>
+          <h1 className="hero-title">
+            Two entry points.
+            <br />
+            One crisis record.
+          </h1>
+          <p className="hero-copy">
+            Start as the client who triggers SOS or as the app admin who
+            monitors, dispatches responders, runs silent cross-match checks, and
+            closes the case with a post-crisis trauma handoff.
+          </p>
+          <div className="hero-list">
+            <div className="hero-feature">
+              <strong>Simultaneous activation</strong>
+              <span>
+                Verified responders, trusted contacts, and authorities receive
+                the same briefing at once.
+              </span>
+            </div>
+            <div className="hero-feature">
+              <strong>Shared live map</strong>
+              <span>
+                Real Google Maps anchor the client location while nearby help
+                services stay as TRACE demo coordination nodes.
+              </span>
+            </div>
+            <div className="hero-feature">
+              <strong>Silent cross-match</strong>
+              <span>
+                BigQuery and Pub/Sub are modeled as timed hospital, shelter, and
+                transit sweeps every 90 seconds.
+              </span>
+            </div>
+            <div className="hero-feature">
+              <strong>Encrypted legal record</strong>
+              <span>
+                Every event is timestamped and sealed into an incident-ready
+                audit trail.
+              </span>
+            </div>
           </div>
         </section>
 
-        <aside className="innovation-stack-intro">
-          <div className="section-tag">// SIGNAL SNAPSHOT</div>
-          <p className="innovation-lead" style={{ fontSize: 14 }}>The upgraded Google stack turns TRACE into a live decision engine that can reason over victim behavior, aggressor proximity, healthcare intake signals, and search geography at the same time.</p>
-          <div className="innovation-stat-grid">
-            <div className="innovation-stat"><div className="innovation-stat-value">90s</div><div className="innovation-stat-label">Cross-match cadence</div></div>
-            <div className="innovation-stat"><div className="innovation-stat-value">6</div><div className="innovation-stat-label">New innovation layers</div></div>
-            <div className="innovation-stat"><div className="innovation-stat-value">1</div><div className="innovation-stat-label">Shared command picture</div></div>
+        <section className="login-grid">
+          <article className="login-card">
+            <div className="section-tag">Login profile</div>
+            <h3>App Admin</h3>
+            <p>
+              Monitors the case, dispatches help services, runs silent
+              cross-match sweeps, and resolves the incident.
+            </p>
+            <ul className="login-highlights">
+              <li>Dedicated responder alert menu</li>
+              <li>Shared map and synchronized service lanes</li>
+              <li>Auto-generated trauma handoff after recovery</li>
+            </ul>
+            <button className="primary-button" type="button" onClick={() => onChoose("admin")}>
+              Enter admin console
+            </button>
+          </article>
+
+          <article className="login-card">
+            <div className="section-tag">Login profile</div>
+            <h3>Client</h3>
+            <p>
+              Presses SOS from the main dashboard, switches local language guidance,
+              and sees a simplified live case picture.
+            </p>
+            <ul className="login-highlights">
+              <li>SOS button restored to the main dashboard</li>
+              <li>Built-in English, Hindi, and Tamil language switch</li>
+              <li>Gemini condition explanation with immediate measures</li>
+            </ul>
+            <button className="primary-button" type="button" onClick={() => onChoose("client")}>
+              Enter client dashboard
+            </button>
+          </article>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function ClientView({
+  profile,
+  profiles,
+  incident,
+  elapsed,
+  localizedCopy,
+  language,
+  onLanguageChange,
+  aiBrief,
+  onGenerateAiBrief,
+  sosPhase,
+  onTriggerSos,
+  logs,
+  onSelectProfile,
+  services,
+  selectedServiceId,
+  onSelectService,
+  syncStatus,
+  clientLocation,
+  onRefreshLocation,
+}) {
+  const activeCaseLocked = Boolean(incident) || sosPhase === "activating";
+  const locationPanel = getClientLocationPanelCopy(profile, clientLocation);
+
+  return (
+    <div className="client-layout">
+      <div className="hero-grid">
+        <section className="panel">
+          <div className="section-tag">{localizedCopy.dashboardTag}</div>
+          <h2 className="panel-title">{localizedCopy.profileTitle}</h2>
+          <p className="panel-copy">{localizedCopy.subtitle}</p>
+
+          <div className="profile-select-list">
+            {profiles.map(item => (
+              <button
+                key={item.id}
+                type="button"
+                className={`profile-card ${item.id === profile.id ? "selected" : ""}`}
+                disabled={activeCaseLocked}
+                onClick={() => onSelectProfile(item.id)}
+              >
+                <div className="profile-card-top">
+                  <div className="profile-badge">{item.callSign}</div>
+                  <div>
+                    <div className="profile-name">{item.name}</div>
+                    <div className="profile-address">
+                      {item.id === profile.id ? profile.address : item.address}
+                    </div>
+                  </div>
+                </div>
+              </button>
+            ))}
           </div>
-        </aside>
+
+          <div className="client-location-card">
+            <div className="service-top">
+              <div>
+                <div className="section-tag">Live location</div>
+                <h4>{locationPanel.title}</h4>
+              </div>
+              <StatusChip status={locationPanel.status} />
+            </div>
+            <p>{locationPanel.copy}</p>
+            <div className="service-actions">
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={onRefreshLocation}
+                disabled={clientLocation.status === "locating"}
+              >
+                {clientLocation.status === "ready" ? "Refresh GPS" : "Use device GPS"}
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section className="panel hero-center">
+          <div className="section-tag">{localizedCopy.title}</div>
+          <h2>{profile.name}</h2>
+          <p>{localizedCopy.statusMessage}</p>
+          <button
+            className="sos-button"
+            type="button"
+            disabled={sosPhase === "activating"}
+            onClick={onTriggerSos}
+          >
+            {sosPhase === "activating"
+              ? "LIVE"
+              : incident?.status === "active"
+                ? "SOS"
+                : "SOS"}
+          </button>
+          <div className="status-banner">
+            <div className="banner-title">
+              {incident?.status === "active"
+                ? `${localizedCopy.incidentActiveLabelPrefix} ${incident.id} active`
+                : incident?.status === "resolved"
+                  ? localizedCopy.statusResolvedLabel
+                  : localizedCopy.statusStandbyLabel}
+            </div>
+            <p className="banner-copy">
+              {incident?.status === "active"
+                ? `${localizedCopy.incidentActive} Elapsed ${formatElapsed(elapsed)}.`
+                : incident?.status === "resolved"
+                  ? localizedCopy.resolvedMessage
+                  : localizedCopy.incidentIdle}
+            </p>
+          </div>
+        </section>
+
+        <section className="panel">
+          <div className="section-tag">{localizedCopy.languageTitle}</div>
+          <h2 className="panel-title">{localizedCopy.profileCondition}</h2>
+          <p className="panel-copy">{localizedCopy.languageBody}</p>
+
+          <div className="inline-control">
+            <div className="language-switch" role="group" aria-label="Client language">
+              {LANGUAGE_OPTIONS.map(option => (
+                <button
+                  key={option.code}
+                  type="button"
+                  className={`language-button ${language === option.code ? "active" : ""}`}
+                  onClick={() => onLanguageChange(option.code)}
+                  aria-pressed={language === option.code}
+                  title={option.name}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            <StatusChip status="clear" />
+          </div>
+
+          <div className="translation-note">{localizedCopy.languageNote}</div>
+
+          <div className="risk-list">
+            {[
+              ["Medical", profile.medicalRisk, profile.medicalRisk > 70 ? "var(--red)" : "var(--amber)"],
+              ["Mobility", profile.mobilityRisk, "var(--blue)"],
+              ["Threat", profile.threatRisk, profile.threatRisk > 80 ? "var(--red)" : "var(--amber)"],
+            ].map(([label, value, color]) => (
+              <div key={label} className="risk-row">
+                <span>{label}</span>
+                <div className="risk-bar">
+                  <div className="risk-fill" style={{ width: `${value}%`, background: color }} />
+                </div>
+                <span>{value}%</span>
+              </div>
+            ))}
+          </div>
+        </section>
       </div>
 
-      <section>
-        <div className="section-tag">// CAPABILITIES</div>
-        <div className="innovation-grid">
-          {INNOVATION_LAYERS.map((layer, index) => (
-            <article key={layer.title} className="innovation-card">
-              <div className="innovation-card-top">
-                <div className="innovation-card-index">{String(index + 1).padStart(2, "0")}</div>
-                <span className="badge blue">LIVE CONCEPT</span>
-              </div>
-              <div className="innovation-card-title">{layer.title}</div>
-              <p className="innovation-card-body">{layer.summary}</p>
-              <p className="innovation-card-detail">{layer.detail}</p>
-            </article>
-          ))}
-        </div>
-      </section>
+      <div className="dashboard-grid">
+        <section className="panel">
+          <div className="section-tag">{localizedCopy.checklistTitle}</div>
+          <ul className="checklist">
+            <li>{localizedCopy.checklistOne}</li>
+            <li>{localizedCopy.checklistTwo}</li>
+            <li>{localizedCopy.checklistThree}</li>
+          </ul>
+          <div className="translation-note" style={{ marginTop: 18 }}>
+            {localizedCopy.profileSituation}
+          </div>
+        </section>
 
-      <section>
-        <div className="section-tag">// GOOGLE TECH STACK</div>
-        <div className="stack-grid">
-          {GOOGLE_STACK.map(item => (
-            <article key={item.capability} className="stack-card">
-              <div className="stack-title">{item.capability}</div>
-              <div className="stack-tool">{item.tool}</div>
-              <p className="stack-copy">{item.description}</p>
-            </article>
-          ))}
+        <section className="panel">
+          <div className="section-tag">{localizedCopy.aiTitle}</div>
+          <div className="panel-action-row">
+            <h3 className="panel-title">{localizedCopy.aiBody}</h3>
+            <button
+              type="button"
+              className="ghost-button"
+              onClick={onGenerateAiBrief}
+              disabled={aiBrief.status === "loading"}
+            >
+              {aiBrief.data ? "Refresh Gemini" : "Show Gemini"}
+            </button>
+          </div>
+          {aiBrief.status === "idle" && (
+            <p className="panel-copy">
+              Request the Gemini summary only when you want the condition guide on
+              screen.
+            </p>
+          )}
+          {aiBrief.status === "loading" && (
+            <div className="gemini-loader-card">
+              <div className="gemini-loader-top">
+                <div className="gemini-loader-orbit" />
+                <div className="gemini-loader-copy">
+                  <strong>Gemini is preparing the client summary</strong>
+                  <span>
+                    TRACE is turning the client profile into a short condition
+                    explanation before showing it on screen.
+                  </span>
+                </div>
+              </div>
+              <div className="gemini-loader-bars">
+                <div className="gemini-loader-bar" />
+                <div className="gemini-loader-bar" />
+                <div className="gemini-loader-bar" />
+              </div>
+            </div>
+          )}
+          {aiBrief.data && (
+            <>
+              <p className="ai-summary">{aiBrief.data.summary}</p>
+              <div className="ai-list">
+                {aiBrief.data.actions.map(action => (
+                  <div key={action} className="ai-list-item">
+                    {action}
+                  </div>
+                ))}
+              </div>
+              <div className="translation-note">
+                Source: {aiBrief.data.source === "gemini" ? "Gemini" : "TRACE fallback guide"}
+                {aiBrief.error ? ` | ${aiBrief.error}` : ""}
+              </div>
+            </>
+          )}
+          {aiBrief.error && !aiBrief.data && (
+            <p className="panel-copy">AI guidance is temporarily unavailable.</p>
+          )}
+        </section>
+
+        <section className="panel">
+          <div className="section-tag">Activation log</div>
+          <div className="log-list">
+            {logs.length === 0 && (
+              <div className="banner-copy">No SOS activation log yet.</div>
+            )}
+            {logs.map((log, index) => (
+              <div key={`${log.time}-${index}`} className={`log-row ${log.tone}`}>
+                <span className="log-time">{log.time}</span>
+                <span className="log-copy">{log.message}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+
+      </div>
+    </div>
+  );
+}
+
+function AdminView({
+  profile,
+  incident,
+  elapsed,
+  adminTab,
+  onSelectTab,
+  services,
+  selectedService,
+  selectedServiceId,
+  onSelectService,
+  onAdvanceService,
+  onResolveCase,
+  onResetDemo,
+  onDownloadReport,
+  onResendAlerts,
+  activationGroups,
+  crossMatchState,
+  onRunCrossMatch,
+  auditTrail,
+  traumaHandoffState,
+  onGenerateTraumaHandoff,
+  adminAiSummary,
+  onGenerateAdminAiSummary,
+  syncStatus,
+}) {
+  const incidentLive = incident?.status === "active";
+  const briefing = buildBriefing(profile, incident);
+  const traumaHandoff = traumaHandoffState.data;
+
+  const tabButtons = [
+    {
+      id: "monitor",
+      label: "Monitor",
+      copy: "Shared live map, synchronized lanes, and the active case overview.",
+    },
+    {
+      id: "dispatch",
+      label: "Dispatch",
+      copy: "Dedicated menu for sending alerts to responders and help services.",
+    },
+    {
+      id: "crossmatch",
+      label: "Cross-match",
+      copy: "Silent 90-second hospital, shelter, and transit sweeps.",
+    },
+    {
+      id: "evidence",
+      label: "Evidence",
+      copy: "Encrypted legal record with timestamps for every event.",
+    },
+    {
+      id: "handoff",
+      label: "Handoff",
+      copy: "Post-crisis incident report and mental health routing.",
+    },
+  ];
+
+  return (
+    <div className="admin-layout">
+      <aside className="admin-menu">
+        <div className="section-tag">Admin login</div>
+        <h2>Command Admin</h2>
+        <p className="panel-copy">
+          Monitor everything, dispatch the right responders, and close the case
+          with a trauma-informed handoff.
+        </p>
+
+        {tabButtons.map(tab => (
+          <button
+            key={tab.id}
+            type="button"
+            className={`admin-tab ${adminTab === tab.id ? "active" : ""}`}
+            onClick={() => onSelectTab(tab.id)}
+          >
+            <span className="admin-tab-label">{tab.label}</span>
+            <span className="admin-tab-copy">{tab.copy}</span>
+          </button>
+        ))}
+      </aside>
+
+      <section className="admin-main">
+        <header className="admin-header">
+          <div>
+            <div className="section-tag">Admin case state</div>
+            <h3>
+              {incident
+                ? `${profile.name} locked in ${incident.zone}`
+                : `${profile.name} staged for the next SOS`}
+            </h3>
+            <p>
+              {incidentLive
+                ? "TRACE has already activated simultaneous alerts, shared map sync, silent cross-match, and encrypted event capture."
+                : incident?.status === "resolved"
+                  ? "The field case is resolved. Review the evidence trail and trauma handoff below."
+                  : "Wait for the client to trigger SOS, then use Dispatch to tune the responder flow and close the loop once the client is safe."}
+            </p>
+          </div>
+
+          <div className="admin-header-right">
+            <div className="timer-value">{formatElapsed(elapsed)}</div>
+            <div className="timer-label">
+              {incident ? "elapsed" : "standby"} | {syncStatus}
+            </div>
+            <div className="inline-control">
+              <button
+                type="button"
+                className="ghost-button"
+                disabled={!incident}
+                onClick={onDownloadReport}
+              >
+                Download report
+              </button>
+              <button
+                type="button"
+                className="ghost-button"
+                disabled={!incidentLive}
+                onClick={() => onResendAlerts("admin")}
+              >
+                Re-send alerts
+              </button>
+              <button
+                type="button"
+                className="danger-button"
+                disabled={!incidentLive}
+                onClick={onResolveCase}
+              >
+                Resolve case
+              </button>
+              <button type="button" className="ghost-button" onClick={onResetDemo}>
+                Reset demo
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <div className="stats-grid">
+          <div className="stat-card">
+            <strong>{services.filter(item => item.category === "responder").length}</strong>
+            <span>Responder nodes</span>
+          </div>
+          <div className="stat-card">
+            <strong>{activationGroups.length}</strong>
+            <span>Alert groups</span>
+          </div>
+          <div className="stat-card">
+            <strong>{auditTrail.length}</strong>
+            <span>Encrypted events</span>
+          </div>
+          <div className="stat-card">
+            <strong>{crossMatchState.cycleCount}</strong>
+            <span>Silent sweeps</span>
+          </div>
         </div>
+
+        {adminTab === "monitor" && (
+          <div className="command-grid">
+            <section className="panel">
+              <EmergencyCommandMap
+                incident={incident}
+                profile={incident ? profile : null}
+                services={services}
+                selectedServiceId={selectedServiceId}
+                onSelectService={onSelectService}
+                syncStatus={syncStatus}
+                title="Responder shared live map"
+                mapVariant="google"
+              />
+            </section>
+
+            <div className="group-list">
+              <section className="selected-service-card">
+                <div className="section-tag">Selected service</div>
+                <h4>{selectedService?.name ?? "No service selected"}</h4>
+                <p>
+                  {selectedService
+                    ? `${selectedService.description} Current status: ${resolveStatusLabel(
+                        selectedService.status
+                      )}.`
+                    : "Select a service from the map rail to inspect its lane."}
+                </p>
+                {selectedService && (
+                  <div className="service-actions">
+                    <StatusChip status={selectedService.status} />
+                    <button
+                      type="button"
+                      className="ghost-button"
+                      onClick={() => onAdvanceService(selectedService.id)}
+                    >
+                      {getServiceActionLabel(selectedService)}
+                    </button>
+                  </div>
+                )}
+              </section>
+
+              <section className="group-card">
+                <div className="section-tag">Activate Simultaneously</div>
+                <h4>Unified briefing</h4>
+                <p className="briefing-card">{briefing}</p>
+              </section>
+
+              <section className="group-card">
+                <div className="section-tag">AI field guidance</div>
+                <div className="service-top">
+                  <h4>Gemini summary</h4>
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    onClick={onGenerateAdminAiSummary}
+                    disabled={adminAiSummary.status === "loading"}
+                  >
+                    {adminAiSummary.data ? "Regenerate" : "Run Gemini"}
+                  </button>
+                </div>
+
+                {adminAiSummary.status === "idle" && (
+                  <p>
+                    Run Gemini only when command needs a fresh field summary for
+                    this case.
+                  </p>
+                )}
+
+                {adminAiSummary.status === "loading" && (
+                  <div className="gemini-loader-card">
+                    <div className="gemini-loader-top">
+                      <div className="gemini-loader-orbit" />
+                      <div className="gemini-loader-copy">
+                        <strong>Gemini is building the field summary</strong>
+                        <span>
+                          TRACE is translating the client profile into a concise
+                          command-ready briefing.
+                        </span>
+                      </div>
+                    </div>
+                    <div className="gemini-loader-bars">
+                      <div className="gemini-loader-bar" />
+                      <div className="gemini-loader-bar" />
+                      <div className="gemini-loader-bar" />
+                    </div>
+                  </div>
+                )}
+
+                {adminAiSummary.status === "ready" && adminAiSummary.data && (
+                  <>
+                    <p>{adminAiSummary.data.summary}</p>
+                    <div className="ai-list">
+                      {adminAiSummary.data.actions.map(action => (
+                        <div key={action} className="ai-list-item">
+                          {action}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="translation-note">
+                      Source:{" "}
+                      {adminAiSummary.data.source === "gemini"
+                        ? "Gemini"
+                        : "TRACE fallback guide"}
+                      {adminAiSummary.error ? ` | ${adminAiSummary.error}` : ""}
+                    </div>
+                  </>
+                )}
+              </section>
+            </div>
+          </div>
+        )}
+
+        {adminTab === "dispatch" && (
+          <div className="dispatch-grid">
+            <section className="panel">
+              <div className="section-tag">Responder dispatch menu</div>
+              <div className="service-grid">
+                {services.map(service => (
+                  <article key={service.id} className="service-card">
+                    <div className="service-top">
+                      <div>
+                        <h4>{service.name}</h4>
+                        <div className="service-meta">
+                          {service.distanceLabel} | ETA {service.etaMinutes} min | {service.lane}
+                        </div>
+                      </div>
+                      <StatusChip status={service.status} />
+                    </div>
+                    <p>{service.description}</p>
+                    <div className="service-actions">
+                      <button
+                        type="button"
+                        className="ghost-button"
+                        onClick={() => onAdvanceService(service.id)}
+                        disabled={!incidentLive && service.category !== "service"}
+                      >
+                        {getServiceActionLabel(service)}
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost-button"
+                        onClick={() => onSelectService(service.id)}
+                      >
+                        Focus on map
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
+
+            <section className="panel">
+              <div className="section-tag">Alert groups</div>
+              <div className="group-list">
+                {activationGroups.map(group => (
+                  <article key={group.id} className="group-card">
+                    <div className="service-top">
+                      <h4>{group.label}</h4>
+                      <StatusChip status={group.status} />
+                    </div>
+                    <p>
+                      {group.channel}
+                      {group.lastAlert ? ` | last alert ${group.lastAlert}` : ""}
+                    </p>
+                    <div className="translation-note" style={{ marginTop: 10 }}>
+                      {group.members.join(", ")}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
+          </div>
+        )}
+
+        {adminTab === "crossmatch" && (
+          <div className="cross-grid">
+            <section className="panel">
+              <div className="section-tag">Silent Hospital Cross-Match</div>
+              <div className="service-actions" style={{ marginBottom: 16 }}>
+                <StatusChip
+                  status={incidentLive ? "syncing" : crossMatchState.lastSweepAt ? "clear" : "queued"}
+                />
+                <button
+                  type="button"
+                  className="ghost-button"
+                  disabled={!incidentLive}
+                  onClick={onRunCrossMatch}
+                >
+                  Run silent sweep now
+                </button>
+              </div>
+              <div className="crossmatch-list">
+                {crossMatchState.records.map(record => (
+                  <article key={record.id} className="cross-card">
+                    <div className="cross-top">
+                      <div>
+                        <h4>{record.label}</h4>
+                        <div className="cross-meta">
+                          {record.stack} | cadence {record.cadence}
+                        </div>
+                      </div>
+                      <StatusChip status={record.status} />
+                    </div>
+                    <p>{record.result}</p>
+                    <div className="translation-note">{record.note}</div>
+                  </article>
+                ))}
+              </div>
+            </section>
+
+            <section className="panel">
+              <div className="section-tag">Sweep cadence</div>
+              <h3 className="panel-title">Every 90 seconds</h3>
+              <p className="panel-copy">
+                TRACE silently pings nearby hospital admissions, shelter
+                check-ins, and transit lost-and-found systems against the active
+                case profile.
+              </p>
+              <div className="risk-list">
+                <div className="risk-row">
+                  <span>Cycles</span>
+                  <div className="risk-bar">
+                    <div
+                      className="risk-fill"
+                      style={{
+                        width: `${Math.min(100, crossMatchState.cycleCount * 14)}%`,
+                        background: "var(--blue)",
+                      }}
+                    />
+                  </div>
+                  <span>{crossMatchState.cycleCount}</span>
+                </div>
+                <div className="risk-row">
+                  <span>Next</span>
+                  <div className="risk-bar">
+                    <div
+                      className="risk-fill"
+                      style={{
+                        width: `${((90 - crossMatchState.nextSweepIn) / 90) * 100}%`,
+                        background: "var(--amber)",
+                      }}
+                    />
+                  </div>
+                  <span>{crossMatchState.nextSweepIn}s</span>
+                </div>
+              </div>
+              <div className="translation-note" style={{ marginTop: 16 }}>
+                Last sweep:{" "}
+                {crossMatchState.lastSweepAt
+                  ? new Date(crossMatchState.lastSweepAt).toLocaleTimeString()
+                  : "Not started"}
+              </div>
+            </section>
+          </div>
+        )}
+
+        {adminTab === "evidence" && (
+          <div className="dispatch-grid">
+            <section className="panel">
+              <div className="section-tag">Encrypted audit record</div>
+              <div className="audit-list">
+                {auditTrail.length === 0 && (
+                  <div className="waiting-card">
+                    <h4>No events sealed yet</h4>
+                    <p>Once the case starts, TRACE will timestamp and encrypt every major action.</p>
+                  </div>
+                )}
+                {auditTrail.map(entry => (
+                  <article key={entry.id} className="audit-row-card">
+                    <div className="audit-meta">
+                      <span>{entry.kind.toUpperCase()}</span>
+                      <span>{entry.timestamp}</span>
+                    </div>
+                    <p className="audit-copy">{entry.message}</p>
+                    <div className="seal-snippet">{entry.seal}</div>
+                  </article>
+                ))}
+              </div>
+            </section>
+
+            <section className="panel">
+              <div className="section-tag">Legal record status</div>
+              <div className="group-list">
+                <article className="group-card">
+                  <h4>Timestamped evidence</h4>
+                  <p>
+                    Every data point is written with a timestamp the moment it is
+                    created so the legal record is built while the crisis is
+                    still live.
+                  </p>
+                </article>
+                <article className="group-card">
+                  <h4>Encryption seal</h4>
+                  <p>
+                    Each event receives an encrypted seal generated in-browser so
+                    the audit log is presentation-ready even before backend
+                    archival.
+                  </p>
+                </article>
+                <article className="group-card">
+                  <h4>Incident report export</h4>
+                  <p>
+                    Use Download report to export the current case, responder
+                    states, and sealed event trail.
+                  </p>
+                </article>
+              </div>
+            </section>
+          </div>
+        )}
+
+        {adminTab === "handoff" && (
+          <div className="handoff-grid">
+            <section className="panel">
+              <div className="service-top">
+                <div>
+                  <div className="section-tag">Post-Crisis Trauma Handoff</div>
+                  <h3 className="panel-title">
+                    {incident?.status === "resolved"
+                      ? "Recovery package"
+                      : "Awaiting case resolution"}
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  className="ghost-button"
+                  onClick={onGenerateTraumaHandoff}
+                  disabled={
+                    incident?.status !== "resolved" ||
+                    traumaHandoffState.status === "loading"
+                  }
+                >
+                  {traumaHandoff ? "Regenerate handoff" : "Generate handoff"}
+                </button>
+              </div>
+
+              {incident?.status !== "resolved" && (
+                <div className="waiting-card">
+                  <h4>Waiting for case resolution</h4>
+                  <p>
+                    Resolve the case first, then TRACE will generate the
+                    structured trauma handoff and mental health routing package.
+                  </p>
+                </div>
+              )}
+
+              {incident?.status === "resolved" &&
+                traumaHandoffState.status === "loading" && (
+                  <div className="gemini-loader-card">
+                    <div className="gemini-loader-top">
+                      <div className="gemini-loader-orbit" />
+                      <div className="gemini-loader-copy">
+                        <strong>TRACE is building the handoff package</strong>
+                        <span>
+                          Gemini is drafting the post-crisis victim, family, and
+                          forms routing summary now.
+                        </span>
+                      </div>
+                    </div>
+                    <div className="gemini-loader-bars">
+                      <div className="gemini-loader-bar" />
+                      <div className="gemini-loader-bar" />
+                      <div className="gemini-loader-bar" />
+                    </div>
+                  </div>
+                )}
+
+              {incident?.status === "resolved" &&
+                traumaHandoffState.status === "error" &&
+                !traumaHandoff && (
+                  <div className="waiting-card">
+                    <h4>Handoff generation failed</h4>
+                    <p>{traumaHandoffState.error}</p>
+                  </div>
+                )}
+
+              {traumaHandoff && (
+                <>
+                  <div className="group-list">
+                    <article className="group-card">
+                      <h4>{traumaHandoff.reportHeadline}</h4>
+                      <p>{traumaHandoff.victimSupport}</p>
+                    </article>
+                    <article className="group-card">
+                      <h4>Family route</h4>
+                      <p>{traumaHandoff.familySupport}</p>
+                    </article>
+                    <article className="group-card">
+                      <h4>Forms API route</h4>
+                      <p>{traumaHandoff.formTitle}</p>
+                    </article>
+                  </div>
+                  <div className="translation-note">
+                    Source:{" "}
+                    {traumaHandoff.source === "gemini"
+                      ? "Gemini"
+                      : "TRACE fallback handoff"}
+                    {traumaHandoffState.error
+                      ? ` | ${traumaHandoffState.error}`
+                      : ""}
+                  </div>
+                </>
+              )}
+            </section>
+
+            {traumaHandoff && (
+              <section className="panel">
+                <div className="section-tag">Mental health routing</div>
+                <div className="form-list">
+                  {TRAUMA_RESOURCES.map(resource => (
+                    <article key={resource.id} className="form-card">
+                      <div className="form-top">
+                        <h4>{resource.name}</h4>
+                        <StatusChip status="notified" />
+                      </div>
+                      <p>{resource.action}</p>
+                      <div className="translation-note">{resource.owner}</div>
+                    </article>
+                  ))}
+                </div>
+              </section>
+            )}
+          </div>
+        )}
       </section>
     </div>
   );
 }
 
 export default function App() {
-  const [view, setView] = useState("sos");
+  const geminiApiKey = import.meta.env.VITE_GEMINI_API_KEY;
+  const geminiModel = import.meta.env.VITE_GEMINI_MODEL || "gemini-2.5-flash";
+  const auditSecret =
+    import.meta.env.VITE_TRACE_AUDIT_SECRET || "trace-demo-audit-secret";
+
+  const [sessionRole, setSessionRole] = useState(null);
+  const [selectedProfileId, setSelectedProfileId] = useState(TRACE_CLIENTS[0].id);
   const [incident, setIncident] = useState(null);
-  const [language, setLanguage] = useState(() => localStorage.getItem(TRACE_LANGUAGE_STORAGE_KEY) || "en");
-
-  useEffect(() => {
-    document.documentElement.lang = language;
-    localStorage.setItem(TRACE_LANGUAGE_STORAGE_KEY, language);
-  }, [language]);
-
-  useEffect(() => {
-    const initializeTranslate = () => {
-      if (!window.google?.translate?.TranslateElement) return false;
-      if (!window.__TRACE_TRANSLATE_INITIALIZED__) {
-        new window.google.translate.TranslateElement(
-          {
-            pageLanguage: "en",
-            includedLanguages: LANGUAGE_OPTIONS.map(option => option.code).join(","),
-            autoDisplay: false,
-          },
-          "google_translate_element"
-        );
-        window.__TRACE_TRANSLATE_INITIALIZED__ = true;
-      }
-      return true;
-    };
-
-    window.googleTranslateElementInit = () => {
-      initializeTranslate();
-      if (language !== "en") {
-        applyGoogleTranslateLanguage(language);
-      }
-    };
-
-    if (!initializeTranslate()) {
-      const existingScript = document.querySelector('script[data-trace-translate="true"]');
-      if (!existingScript) {
-        const script = document.createElement("script");
-        script.src = "https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit";
-        script.async = true;
-        script.dataset.traceTranslate = "true";
-        document.body.appendChild(script);
-      }
+  const [services, setServices] = useState(() =>
+    createServiceState(TRACE_CLIENTS[0])
+  );
+  const [activationGroups, setActivationGroups] = useState(() =>
+    createActivationState(TRACE_CLIENTS[0])
+  );
+  const [selectedServiceId, setSelectedServiceId] = useState(null);
+  const [dispatchLogs, setDispatchLogs] = useState([]);
+  const [sosPhase, setSosPhase] = useState("idle");
+  const [adminTab, setAdminTab] = useState("monitor");
+  const [crossMatchState, setCrossMatchState] = useState(
+    createInitialCrossMatchState
+  );
+  const [auditTrail, setAuditTrail] = useState([]);
+  const [traumaHandoffState, setTraumaHandoffState] = useState(
+    createAsyncState
+  );
+  const [elapsed, setElapsed] = useState(0);
+  const [language, setLanguage] = useState(() => {
+    try {
+      return normalizeLanguage(
+        window.localStorage.getItem("trace-client-language") || "en"
+      );
+    } catch {
+      return "en";
     }
-  }, [language]);
+  });
+  const [aiBrief, setAiBrief] = useState(createAsyncState);
+  const [adminAiSummary, setAdminAiSummary] = useState(createAsyncState);
+  const [clientLocation, setClientLocation] = useState(createClientLocationState);
+
+  const logTimeoutsRef = useRef([]);
+  const selectedProfileRef = useRef(TRACE_CLIENTS[0]);
+
+  const baseSelectedProfile = useMemo(
+    () => TRACE_CLIENTS.find(profile => profile.id === selectedProfileId) ?? TRACE_CLIENTS[0],
+    [selectedProfileId]
+  );
+  const selectedProfile = useMemo(
+    () => applyClientLocationToProfile(baseSelectedProfile, clientLocation),
+    [baseSelectedProfile, clientLocation]
+  );
+  const incidentProfile = useMemo(
+    () =>
+      incident
+        ? applyIncidentLocationToProfile(
+            TRACE_CLIENTS.find(profile => profile.id === incident.profileId) ??
+              baseSelectedProfile,
+            incident
+          )
+        : null,
+    [baseSelectedProfile, incident]
+  );
+  const displayProfile = incidentProfile ?? selectedProfile;
+  const localizedCopy = useMemo(
+    () =>
+      buildLocalizedClientCopy(
+        displayProfile,
+        incident?.status === "active",
+        language
+      ),
+    [displayProfile, incident?.status, language]
+  );
+  const selectedService =
+    services.find(service => service.id === selectedServiceId) ?? services[0] ?? null;
+  const syncStatus =
+    incident?.status === "active"
+      ? "Firebase sync live"
+      : incident?.status === "resolved"
+        ? "Case synced and sealed"
+        : "Waiting for active case";
+
+  const pushAudit = (kind, message, payload = {}) => {
+    const timestamp = new Date().toISOString();
+    const entryId = `AUD-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+
+    sealAuditPayload({ kind, message, payload, timestamp }, auditSecret).then(seal => {
+      setAuditTrail(current => [
+        {
+          id: entryId,
+          kind,
+          message,
+          timestamp,
+          payload,
+          seal,
+        },
+        ...current,
+      ]);
+    });
+  };
+
+  const clearScheduledLogs = () => {
+    logTimeoutsRef.current.forEach(timerId => window.clearTimeout(timerId));
+    logTimeoutsRef.current = [];
+  };
+
+  useEffect(() => () => clearScheduledLogs(), []);
 
   useEffect(() => {
-    const currentCookie = readGoogTransCookie();
-    if (language === "en") {
-      if (currentCookie && !currentCookie.endsWith("/en")) {
-        clearGoogTransCookie();
-        window.location.reload();
-      }
+    if (!sessionRole) {
       return;
     }
-    writeGoogTransCookie(language);
-    applyGoogleTranslateLanguage(language);
+
+    pushAudit("session", `${sessionRole} signed into TRACE`, { role: sessionRole });
+  }, [sessionRole]);
+
+  useEffect(() => {
+    selectedProfileRef.current = selectedProfile;
+  }, [selectedProfile]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("trace-client-language", normalizeLanguage(language));
+    } catch {
+      return;
+    }
   }, [language]);
+
+  const requestClientLocation = async () => {
+    setClientLocation(current => ({
+      ...current,
+      status: "locating",
+      error: "",
+    }));
+
+    try {
+      const liveLocation = await captureClientLocation();
+      const nextLocationState = buildClientLocationState(liveLocation);
+      setClientLocation(nextLocationState);
+      return nextLocationState;
+    } catch (error) {
+      setClientLocation(current => ({
+        ...current,
+        status: current.coords ? "ready" : "error",
+        error: error.message,
+      }));
+      return null;
+    }
+  };
+
+  useEffect(() => {
+    if (sessionRole !== "client") {
+      return;
+    }
+
+    void requestClientLocation();
+  }, [sessionRole]);
+
+  useEffect(() => {
+    if (!services.some(service => service.id === selectedServiceId)) {
+      setSelectedServiceId(services[0]?.id ?? null);
+    }
+  }, [selectedServiceId, services]);
+
+  useEffect(() => {
+    if (incident) {
+      return;
+    }
+
+    const standbyServices = createServiceState(selectedProfile);
+    setServices(standbyServices);
+    setActivationGroups(createActivationState(selectedProfile));
+    setCrossMatchState(createInitialCrossMatchState());
+    setSelectedServiceId(standbyServices[0]?.id ?? null);
+  }, [incident, selectedProfile]);
+
+  useEffect(() => {
+    setAiBrief(createAsyncState());
+  }, [displayProfile?.id, incident?.id, incident?.status, sessionRole]);
+
+  useEffect(() => {
+    setAdminAiSummary(createAsyncState());
+  }, [displayProfile?.id, incident?.id, incident?.status]);
+
+  useEffect(() => {
+    if (!incident) {
+      setElapsed(0);
+      return;
+    }
+
+    const updateElapsed = () => {
+      const endTime =
+        incident.status === "resolved" && incident.resolvedAt
+          ? new Date(incident.resolvedAt).getTime()
+          : Date.now();
+      setElapsed(Math.max(0, Math.floor((endTime - incident.startTime) / 1000)));
+    };
+
+    updateElapsed();
+
+    if (incident.status === "resolved") {
+      return;
+    }
+
+    const timer = window.setInterval(updateElapsed, 1000);
+    return () => window.clearInterval(timer);
+  }, [incident]);
+
+  const performCrossMatchSweep = source => {
+    if (!incidentProfile || incident?.status !== "active") {
+      return;
+    }
+
+    const now = Date.now();
+    setCrossMatchState(current => {
+      const cycleCount = current.cycleCount + 1;
+      return {
+        cycleCount,
+        lastSweepAt: now,
+        nextSweepIn: 90,
+        records: buildCrossMatchRecords(incidentProfile, cycleCount),
+      };
+    });
+
+    setServices(current =>
+      current.map(service =>
+        service.category === "service"
+          ? {
+              ...service,
+              status: "syncing",
+              lastUpdate: new Date(now).toISOString(),
+            }
+          : service
+      )
+    );
+
+    pushAudit("crossmatch", `Silent cross-match sweep ${source}`, {
+      incidentId: incident.id,
+      profileId: incidentProfile.id,
+      source,
+    });
+  };
+
+  useEffect(() => {
+    if (!incidentProfile || incident?.status !== "active") {
+      return;
+    }
+
+    performCrossMatchSweep("initial");
+
+    const cadenceTimer = window.setInterval(() => {
+      performCrossMatchSweep("scheduled");
+    }, 90000);
+
+    const countdownTimer = window.setInterval(() => {
+      setCrossMatchState(current => {
+        if (!current.lastSweepAt) {
+          return current;
+        }
+
+        const remaining = Math.max(
+          0,
+          90 - Math.floor((Date.now() - current.lastSweepAt) / 1000)
+        );
+
+        return {
+          ...current,
+          nextSweepIn: remaining,
+        };
+      });
+    }, 1000);
+
+    return () => {
+      window.clearInterval(cadenceTimer);
+      window.clearInterval(countdownTimer);
+    };
+  }, [incident?.id, incident?.status, incidentProfile]);
+
+  const requestClientAiBrief = () => {
+    if (!displayProfile) {
+      return;
+    }
+
+    setAiBrief({
+      status: "loading",
+      data: null,
+      error: "",
+    });
+
+    pushAudit("ai", "Client requested Gemini summary", {
+      profileId: displayProfile.id,
+      incidentId: incident?.id ?? null,
+    });
+
+    generateConditionBrief({
+      apiKey: geminiApiKey,
+      model: geminiModel,
+      profile: displayProfile,
+      incidentActive: incident?.status === "active",
+    })
+      .then(data => {
+        setAiBrief({
+          status: "ready",
+          data,
+          error: data.error || "",
+        });
+      })
+      .catch(error => {
+        setAiBrief({
+          status: "ready",
+          data: null,
+          error: error.message,
+        });
+      });
+  };
+
+  const requestTraumaHandoff = (requestedBy = "admin") => {
+    if (!incident || !incidentProfile || incident.status !== "resolved") {
+      return;
+    }
+
+    setTraumaHandoffState(current => ({
+      status: "loading",
+      data: current.data,
+      error: "",
+    }));
+
+    if (requestedBy === "admin") {
+      pushAudit("handoff", "Admin requested trauma handoff generation", {
+        incidentId: incident.id,
+      });
+    }
+
+    generateTraumaHandoff({
+      apiKey: geminiApiKey,
+      model: geminiModel,
+      profile: incidentProfile,
+      incident,
+    })
+      .then(data => {
+        setTraumaHandoffState({
+          status: "ready",
+          data: {
+            ...data,
+            createdAt: new Date().toISOString(),
+          },
+          error: data.error || "",
+        });
+        pushAudit("handoff", "Post-crisis trauma handoff generated", {
+          incidentId: incident.id,
+          source: data.source,
+          requestedBy,
+        });
+      })
+      .catch(error => {
+        setTraumaHandoffState({
+          status: "error",
+          data: null,
+          error: error.message,
+        });
+        pushAudit("handoff", "Trauma handoff generation failed", {
+          incidentId: incident.id,
+          requestedBy,
+          error: error.message,
+        });
+      });
+  };
+
+  useEffect(() => {
+    if (!incidentProfile || incident?.status !== "resolved") {
+      return;
+    }
+
+    if (traumaHandoffState.status !== "idle") {
+      return;
+    }
+
+    requestTraumaHandoff("system");
+  }, [incident?.id, incident?.status, incidentProfile, traumaHandoffState.status]);
+
+  const triggerSos = () => {
+    if (sosPhase === "activating") {
+      return;
+    }
+
+    if (incident?.status === "active") {
+      resendAlerts("client");
+      return;
+    }
+
+    clearScheduledLogs();
+    setDispatchLogs([]);
+    setTraumaHandoffState(createAsyncState());
+    setSosPhase("activating");
+
+    if (clientLocation.status !== "ready") {
+      void requestClientLocation();
+    }
+
+    SOS_LOG_SEQUENCE.forEach(entry => {
+      const timeoutId = window.setTimeout(() => {
+        setDispatchLogs(current => [
+          ...current,
+          {
+            time: formatClock(new Date()),
+            message: entry.message,
+            tone: entry.tone,
+          },
+        ]);
+      }, entry.delay);
+
+      logTimeoutsRef.current.push(timeoutId);
+    });
+
+    const finalizeId = window.setTimeout(() => {
+      const activeProfile = selectedProfileRef.current;
+      const nextIncident = createIncident(activeProfile);
+      const liveServices = createServiceState(activeProfile, "active");
+      const liveGroups = createActivationState(activeProfile, "active");
+
+      setIncident(nextIncident);
+      setServices(liveServices);
+      setActivationGroups(
+        liveGroups.map(group => ({
+          ...group,
+          lastAlert: new Date().toISOString(),
+        }))
+      );
+      setCrossMatchState(createInitialCrossMatchState());
+      setSelectedServiceId(liveServices[0]?.id ?? null);
+      setSosPhase("active");
+      setDispatchLogs(current => [
+        ...current,
+        {
+          time: formatClock(new Date()),
+          message:
+            "Activate Simultaneously briefing sent to responders, trusted contacts, and authorities.",
+          tone: "success",
+        },
+      ]);
+
+      pushAudit("sos", "Client triggered SOS", {
+        incidentId: nextIncident.id,
+        profileId: activeProfile.id,
+      });
+      pushAudit("dispatch", "Activate Simultaneously sent automatically", {
+        incidentId: nextIncident.id,
+        profileId: activeProfile.id,
+      });
+    }, 3600);
+
+    logTimeoutsRef.current.push(finalizeId);
+  };
+
+  const resendAlerts = source => {
+    if (!incident || !incidentProfile) {
+      return;
+    }
+
+    setServices(current =>
+      current.map(service => {
+        if (service.status === "resolved") {
+          return service;
+        }
+
+        return {
+          ...service,
+          status:
+            service.category === "responder"
+              ? "en-route"
+              : service.category === "authority"
+                ? "alerted"
+                : "syncing",
+          lastUpdate: new Date().toISOString(),
+        };
+      })
+    );
+
+    setActivationGroups(current =>
+      current.map(group => ({
+        ...group,
+        status: group.tone === "trusted" ? "notified" : "alerted",
+        lastAlert: new Date().toISOString(),
+      }))
+    );
+
+    setDispatchLogs(current => [
+      ...current,
+      {
+        time: formatClock(new Date()),
+        message:
+          "Simultaneous alerts refreshed for responders, trusted contacts, and authorities.",
+        tone: "normal",
+      },
+    ]);
+
+    pushAudit("dispatch", `Activate Simultaneously re-sent by ${source}`, {
+      incidentId: incident.id,
+      source,
+    });
+  };
+
+  const requestAdminAiSummary = () => {
+    if (!displayProfile) {
+      return;
+    }
+
+    setAdminAiSummary({
+      status: "loading",
+      data: null,
+      error: "",
+    });
+
+    pushAudit("ai", "Admin requested Gemini summary", {
+      profileId: displayProfile.id,
+      incidentId: incident?.id ?? null,
+    });
+
+    generateConditionBrief({
+      apiKey: geminiApiKey,
+      model: geminiModel,
+      profile: displayProfile,
+      incidentActive: incident?.status === "active",
+    })
+      .then(data => {
+        setAdminAiSummary({
+          status: "ready",
+          data,
+          error: data.error || "",
+        });
+      })
+      .catch(error => {
+        setAdminAiSummary({
+          status: "ready",
+          data: null,
+          error: error.message,
+        });
+      });
+  };
+
+  const advanceService = serviceId => {
+    const target = services.find(service => service.id === serviceId);
+
+    if (!target) {
+      return;
+    }
+
+    let nextStatus = target.status;
+
+    if (target.category === "service") {
+      nextStatus = "syncing";
+    } else if (target.status === "standby") {
+      nextStatus = "alerted";
+    } else if (target.status === "alerted") {
+      nextStatus = "en-route";
+    } else if (target.status === "en-route") {
+      nextStatus = "on-scene";
+    }
+
+    setServices(current =>
+      current.map(service =>
+        service.id === serviceId
+          ? {
+              ...service,
+              status: nextStatus,
+              lastUpdate: new Date().toISOString(),
+            }
+          : service
+      )
+    );
+
+    pushAudit("service", `${target.name} updated to ${nextStatus}`, {
+      serviceId,
+      nextStatus,
+      incidentId: incident?.id ?? null,
+    });
+  };
+
+  const resolveCase = () => {
+    if (!incident || !incidentProfile) {
+      return;
+    }
+
+    const leadResponder =
+      services.find(
+        service =>
+          service.category === "responder" &&
+          (service.status === "on-scene" || service.status === "en-route")
+      ) ?? services.find(service => service.category === "responder");
+    const shelterRoute =
+      services.find(service => service.type === "shelter")?.name ?? "Safe shelter route";
+    const notes = `Resolved by ${leadResponder?.name ?? "field team"}. Client stabilized and routed through ${shelterRoute}.`;
+
+    setIncident(current =>
+      current
+        ? {
+            ...current,
+            status: "resolved",
+            resolvedAt: new Date().toISOString(),
+            resolutionNotes: notes,
+          }
+        : current
+    );
+    setServices(current =>
+      current.map(service => ({
+        ...service,
+        status: "resolved",
+        lastUpdate: new Date().toISOString(),
+      }))
+    );
+    setActivationGroups(current =>
+      current.map(group => ({
+        ...group,
+        status: "resolved",
+        lastAlert: new Date().toISOString(),
+      }))
+    );
+    setSosPhase("resolved");
+    setDispatchLogs(current => [
+      ...current,
+      {
+        time: formatClock(new Date()),
+        message: "Client located. TRACE is generating the trauma handoff package.",
+        tone: "success",
+      },
+    ]);
+
+    pushAudit("resolution", "Case resolved and handoff requested", {
+      incidentId: incident.id,
+      leadResponder: leadResponder?.name ?? null,
+    });
+    setAdminTab("handoff");
+  };
+
+  const resetDemo = () => {
+    clearScheduledLogs();
+    setIncident(null);
+    setServices(createServiceState(selectedProfile));
+    setActivationGroups(createActivationState(selectedProfile));
+    setSelectedServiceId(null);
+    setDispatchLogs([]);
+    setSosPhase("idle");
+    setAdminTab("monitor");
+    setCrossMatchState(createInitialCrossMatchState());
+    setTraumaHandoffState(createAsyncState());
+    setElapsed(0);
+    pushAudit("system", "Demo reset to standby", { profileId: selectedProfile.id });
+  };
+
+  const downloadReport = () => {
+    if (!incident || !incidentProfile) {
+      return;
+    }
+
+    const report = buildIncidentReport({
+      incident,
+      profile: incidentProfile,
+      services,
+      auditTrail,
+      traumaHandoff: traumaHandoffState.data,
+    });
+    const anchor = document.createElement("a");
+    anchor.href = URL.createObjectURL(new Blob([report], { type: "text/plain" }));
+    anchor.download = `${incident.id}_trace_report.txt`;
+    anchor.click();
+  };
+
+  if (!sessionRole) {
+    return (
+      <>
+        <style>{STYLES}</style>
+        <div className="trace-root">
+          <RoleGate onChoose={setSessionRole} />
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
       <style>{STYLES}</style>
-      <div className="app">
-        <nav className="navbar">
-          <div className="nav-logo">T<span>.</span>R<span>.</span>A<span>.</span>C<span>.</span>E</div>
-          <div className="nav-tabs">
-            <button className={view === "sos" ? "active" : ""} onClick={() => setView("sos")}>SOS</button>
-            <button className={view === "dashboard" ? "active" : ""} onClick={() => setView("dashboard")}>Command</button>
-            <button className={view === "innovation" ? "active" : ""} onClick={() => setView("innovation")}>Innovation</button>
-            <button className={view === "profile" ? "active" : ""} onClick={() => setView("profile")}>Profiles</button>
+      <div className="trace-app">
+        <header className="topbar">
+          <div className="topbar-left">
+            <div className="brand">
+              T<span>.</span>R<span>.</span>A<span>.</span>C<span>.</span>E
+            </div>
+            <span className="role-pill">
+              {sessionRole === "admin" ? "App admin" : "Client"}
+            </span>
+            {incident && (
+              <span className="status-pill">
+                <span className="status-dot" />
+                {incident.status === "active" ? "Active incident" : "Resolved case"}
+              </span>
+            )}
           </div>
-          <div className="nav-right">
-            {incident && <div className="nav-alert"><span className="pulse-dot" />ACTIVE INCIDENT</div>}
-            <LanguageSwitcher language={language} onChange={setLanguage} />
+
+          <div className="topbar-right">
+            <button
+              type="button"
+              className="topbar-button"
+              onClick={() =>
+                setSessionRole(current => (current === "admin" ? "client" : "admin"))
+              }
+            >
+              Switch role
+            </button>
+            <button
+              type="button"
+              className="topbar-button"
+              onClick={() => setSessionRole(null)}
+            >
+              Log out
+            </button>
           </div>
-        </nav>
-        <div id="google_translate_element" className="translate-anchor" />
-        <main className="main">
-          {view === "sos" && <SOSPage onTrigger={d => { setIncident(d); }} incident={incident} />}
-          {view === "dashboard" && <DashboardPage incident={incident} />}
-          {view === "innovation" && <InnovationPage />}
-          {view === "profile" && <ProfilePage />}
+        </header>
+
+        <main className="trace-main">
+          {sessionRole === "client" ? (
+            <ClientView
+              profile={displayProfile}
+              profiles={TRACE_CLIENTS}
+              incident={incident}
+              elapsed={elapsed}
+              localizedCopy={localizedCopy}
+              language={language}
+              onLanguageChange={nextLanguage =>
+                setLanguage(normalizeLanguage(nextLanguage))
+              }
+              aiBrief={aiBrief}
+              onGenerateAiBrief={requestClientAiBrief}
+              sosPhase={sosPhase}
+              onTriggerSos={triggerSos}
+              logs={dispatchLogs}
+              onSelectProfile={setSelectedProfileId}
+              services={services}
+              selectedServiceId={selectedServiceId}
+              onSelectService={setSelectedServiceId}
+              syncStatus={syncStatus}
+              clientLocation={clientLocation}
+              onRefreshLocation={requestClientLocation}
+            />
+          ) : (
+            <AdminView
+              profile={displayProfile}
+              incident={incident}
+              elapsed={elapsed}
+              adminTab={adminTab}
+              onSelectTab={setAdminTab}
+              services={services}
+              selectedService={selectedService}
+              selectedServiceId={selectedServiceId}
+              onSelectService={setSelectedServiceId}
+              onAdvanceService={advanceService}
+              onResolveCase={resolveCase}
+              onResetDemo={resetDemo}
+              onDownloadReport={downloadReport}
+              onResendAlerts={resendAlerts}
+              activationGroups={activationGroups}
+              crossMatchState={crossMatchState}
+              onRunCrossMatch={() => performCrossMatchSweep("manual")}
+              auditTrail={auditTrail}
+              traumaHandoffState={traumaHandoffState}
+              onGenerateTraumaHandoff={() => requestTraumaHandoff("admin")}
+              adminAiSummary={adminAiSummary}
+              onGenerateAdminAiSummary={requestAdminAiSummary}
+              syncStatus={syncStatus}
+            />
+          )}
         </main>
       </div>
     </>
